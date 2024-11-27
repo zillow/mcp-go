@@ -5,8 +5,7 @@ A Go implementation of the Model Context Protocol (MCP), enabling seamless integ
 ## About MCP
 
 The Model Context Protocol (MCP) is an open protocol that enables seamless integration between LLM applications and external data sources and tools.
-Learn more at [modelcontextprotocol.io](https://modelcontextprotocol.io/) and view the specification at [spec.modelcontextprotocol.io](https://spec.
-modelcontextprotocol.io/).
+Learn more at [modelcontextprotocol.io](https://modelcontextprotocol.io/) and view the specification at [spec.modelcontextprotocol.io](https://spec.modelcontextprotocol.io/).
 
 ## Installation
 
