@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -21,6 +22,7 @@ type MCPServer interface {
 	HandleCallTool(CallToolFunc)
 	HandleSetLevel(SetLevelFunc)
 	HandleComplete(CompleteFunc)
+	HandleNotification(string, NotificationFunc)
 }
 
 type InitializeFunc func(ctx context.Context, capabilities mcp.ClientCapabilities, clientInfo mcp.Implementation, protocolVersion string) (*mcp.InitializeResult, error)
@@ -46,6 +48,8 @@ type CallToolFunc func(ctx context.Context, name string, arguments map[string]in
 type SetLevelFunc func(ctx context.Context, level mcp.LoggingLevel) error
 
 type CompleteFunc func(ctx context.Context, ref interface{}, argument mcp.CompleteArgument) (*mcp.CompleteResult, error)
+
+type NotificationFunc func(ctx context.Context, args any) (any, error)
 
 type DefaultServer struct {
 	handlers map[string]interface{}
@@ -76,6 +80,7 @@ func NewDefaultServer(name, version string) *DefaultServer {
 	s.HandleCallTool(s.defaultCallTool)
 	s.HandleSetLevel(s.defaultSetLevel)
 	s.HandleComplete(s.defaultComplete)
+	s.HandleNotifcation("initialized", s.defaultNotificationInitialized)
 
 	return s
 }
@@ -94,6 +99,10 @@ func (s *DefaultServer) Request(
 	// If params is nil, use empty object for methods that expect params
 	if params == nil {
 		params = json.RawMessage("{}")
+	}
+
+	if strings.Contains(method, "notifications") {
+		return s.handlers[method].(NotificationFunc)(ctx, params)
 	}
 
 	switch method {
@@ -351,6 +360,10 @@ func (s *DefaultServer) HandleComplete(
 	s.handlers["completion/complete"] = f
 }
 
+func (s *DefaultServer) HandleNotifcation(name string, f NotificationFunc) {
+	s.handlers["notifications/"+name] = f
+}
+
 // Default handlers
 func (s *DefaultServer) defaultInitialize(
 	ctx context.Context,
@@ -374,6 +387,13 @@ func (s *DefaultServer) defaultInitialize(
 			},
 		},
 	}, nil
+}
+
+func (s *DefaultServer) defaultNotificationInitialized(
+	ctx context.Context,
+	args any,
+) (any, error) {
+	return nil, nil
 }
 
 func (s *DefaultServer) defaultPing(ctx context.Context) error {
