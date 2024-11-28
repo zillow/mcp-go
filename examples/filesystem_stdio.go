@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func main() {
@@ -32,8 +33,8 @@ func main() {
 	fmt.Println("Initializing client...")
 	initResult, err := c.Initialize(
 		ctx,
-		client.ClientCapabilities{},
-		client.Implementation{
+		mcp.ClientCapabilities{},
+		mcp.Implementation{
 			Name:    "example-client",
 			Version: "1.0.0",
 		},
@@ -124,9 +125,9 @@ func main() {
 }
 
 // Helper function to print tool results
-func printToolResult(result *client.CallToolResult) {
+func printToolResult(result *mcp.CallToolResult) {
 	for _, content := range result.Content {
-		if textContent, ok := content.(client.TextContent); ok {
+		if textContent, ok := content.(mcp.TextContent); ok {
 			fmt.Println(textContent.Text)
 		} else {
 			jsonBytes, _ := json.MarshalIndent(content, "", "  ")

@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 type StdioMCPClient struct {
@@ -162,14 +164,14 @@ func (c *StdioMCPClient) sendRequest(
 
 func (c *StdioMCPClient) Initialize(
 	ctx context.Context,
-	capabilities ClientCapabilities,
-	clientInfo Implementation,
+	capabilities mcp.ClientCapabilities,
+	clientInfo mcp.Implementation,
 	protocolVersion string,
-) (*InitializeResult, error) {
+) (*mcp.InitializeResult, error) {
 	params := struct {
-		Capabilities    ClientCapabilities `json:"capabilities"`
-		ClientInfo      Implementation     `json:"clientInfo"`
-		ProtocolVersion string             `json:"protocolVersion"`
+		Capabilities    mcp.ClientCapabilities `json:"capabilities"`
+		ClientInfo      mcp.Implementation     `json:"clientInfo"`
+		ProtocolVersion string                 `json:"protocolVersion"`
 	}{
 		Capabilities:    capabilities,
 		ClientInfo:      clientInfo,
@@ -181,7 +183,7 @@ func (c *StdioMCPClient) Initialize(
 		return nil, err
 	}
 
-	var result InitializeResult
+	var result mcp.InitializeResult
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -198,7 +200,7 @@ func (c *StdioMCPClient) Ping(ctx context.Context) error {
 func (c *StdioMCPClient) ListResources(
 	ctx context.Context,
 	cursor *string,
-) (*ListResourcesResult, error) {
+) (*mcp.ListResourcesResult, error) {
 	params := struct {
 		Cursor *string `json:"cursor,omitempty"`
 	}{
@@ -210,7 +212,7 @@ func (c *StdioMCPClient) ListResources(
 		return nil, err
 	}
 
-	var result ListResourcesResult
+	var result mcp.ListResourcesResult
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -221,7 +223,7 @@ func (c *StdioMCPClient) ListResources(
 func (c *StdioMCPClient) ReadResource(
 	ctx context.Context,
 	uri string,
-) (*ReadResourceResult, error) {
+) (*mcp.ReadResourceResult, error) {
 	params := struct {
 		URI string `json:"uri"`
 	}{
@@ -233,7 +235,7 @@ func (c *StdioMCPClient) ReadResource(
 		return nil, err
 	}
 
-	var result ReadResourceResult
+	var result mcp.ReadResourceResult
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -266,7 +268,7 @@ func (c *StdioMCPClient) Unsubscribe(ctx context.Context, uri string) error {
 func (c *StdioMCPClient) ListPrompts(
 	ctx context.Context,
 	cursor *string,
-) (*ListPromptsResult, error) {
+) (*mcp.ListPromptsResult, error) {
 	params := struct {
 		Cursor *string `json:"cursor,omitempty"`
 	}{
@@ -278,7 +280,7 @@ func (c *StdioMCPClient) ListPrompts(
 		return nil, err
 	}
 
-	var result ListPromptsResult
+	var result mcp.ListPromptsResult
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -290,7 +292,7 @@ func (c *StdioMCPClient) GetPrompt(
 	ctx context.Context,
 	name string,
 	arguments map[string]string,
-) (*GetPromptResult, error) {
+) (*mcp.GetPromptResult, error) {
 	params := struct {
 		Name      string            `json:"name"`
 		Arguments map[string]string `json:"arguments,omitempty"`
@@ -304,7 +306,7 @@ func (c *StdioMCPClient) GetPrompt(
 		return nil, err
 	}
 
-	var result GetPromptResult
+	var result mcp.GetPromptResult
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -315,7 +317,7 @@ func (c *StdioMCPClient) GetPrompt(
 func (c *StdioMCPClient) ListTools(
 	ctx context.Context,
 	cursor *string,
-) (*ListToolsResult, error) {
+) (*mcp.ListToolsResult, error) {
 	params := struct {
 		Cursor *string `json:"cursor,omitempty"`
 	}{
@@ -327,7 +329,7 @@ func (c *StdioMCPClient) ListTools(
 		return nil, err
 	}
 
-	var result ListToolsResult
+	var result mcp.ListToolsResult
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -339,7 +341,7 @@ func (c *StdioMCPClient) CallTool(
 	ctx context.Context,
 	name string,
 	arguments map[string]interface{},
-) (*CallToolResult, error) {
+) (*mcp.CallToolResult, error) {
 	params := struct {
 		Name      string                 `json:"name"`
 		Arguments map[string]interface{} `json:"arguments,omitempty"`
@@ -353,7 +355,7 @@ func (c *StdioMCPClient) CallTool(
 		return nil, err
 	}
 
-	var result CallToolResult
+	var result mcp.CallToolResult
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -363,10 +365,10 @@ func (c *StdioMCPClient) CallTool(
 
 func (c *StdioMCPClient) SetLevel(
 	ctx context.Context,
-	level LoggingLevel,
+	level mcp.LoggingLevel,
 ) error {
 	params := struct {
-		Level LoggingLevel `json:"level"`
+		Level mcp.LoggingLevel `json:"level"`
 	}{
 		Level: level,
 	}
@@ -378,11 +380,11 @@ func (c *StdioMCPClient) SetLevel(
 func (c *StdioMCPClient) Complete(
 	ctx context.Context,
 	ref interface{},
-	argument CompleteArgument,
-) (*CompleteResult, error) {
+	argument mcp.CompleteArgument,
+) (*mcp.CompleteResult, error) {
 	params := struct {
-		Ref      interface{}      `json:"ref"`
-		Argument CompleteArgument `json:"argument"`
+		Ref      interface{}          `json:"ref"`
+		Argument mcp.CompleteArgument `json:"argument"`
 	}{
 		Ref:      ref,
 		Argument: argument,
@@ -393,7 +395,7 @@ func (c *StdioMCPClient) Complete(
 		return nil, err
 	}
 
-	var result CompleteResult
+	var result mcp.CompleteResult
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}

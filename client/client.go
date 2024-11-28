@@ -1,16 +1,20 @@
 package client
 
-import "context"
+import (
+	"context"
+
+	"github.com/mark3labs/mcp-go/mcp"
+)
 
 // Client represents an MCP client interface
 type MCPClient interface {
 	// Initialize sends the initial connection request to the server
 	Initialize(
 		ctx context.Context,
-		capabilities ClientCapabilities,
-		clientInfo Implementation,
+		capabilities mcp.ClientCapabilities,
+		clientInfo mcp.Implementation,
 		protocolVersion string,
-	) (*InitializeResult, error)
+	) (*mcp.InitializeResult, error)
 
 	// Ping checks if the server is alive
 	Ping(ctx context.Context) error
@@ -19,10 +23,13 @@ type MCPClient interface {
 	ListResources(
 		ctx context.Context,
 		cursor *string,
-	) (*ListResourcesResult, error)
+	) (*mcp.ListResourcesResult, error)
 
 	// ReadResource reads a specific resource from the server
-	ReadResource(ctx context.Context, uri string) (*ReadResourceResult, error)
+	ReadResource(
+		ctx context.Context,
+		uri string,
+	) (*mcp.ReadResourceResult, error)
 
 	// Subscribe requests notifications for changes to a specific resource
 	Subscribe(ctx context.Context, uri string) error
@@ -31,32 +38,35 @@ type MCPClient interface {
 	Unsubscribe(ctx context.Context, uri string) error
 
 	// ListPrompts requests a list of available prompts from the server
-	ListPrompts(ctx context.Context, cursor *string) (*ListPromptsResult, error)
+	ListPrompts(
+		ctx context.Context,
+		cursor *string,
+	) (*mcp.ListPromptsResult, error)
 
 	// GetPrompt retrieves a specific prompt from the server
 	GetPrompt(
 		ctx context.Context,
 		name string,
 		arguments map[string]string,
-	) (*GetPromptResult, error)
+	) (*mcp.GetPromptResult, error)
 
 	// ListTools requests a list of available tools from the server
-	ListTools(ctx context.Context, cursor *string) (*ListToolsResult, error)
+	ListTools(ctx context.Context, cursor *string) (*mcp.ListToolsResult, error)
 
 	// CallTool invokes a specific tool on the server
 	CallTool(
 		ctx context.Context,
 		name string,
 		arguments map[string]interface{},
-	) (*CallToolResult, error)
+	) (*mcp.CallToolResult, error)
 
 	// SetLevel sets the logging level for the server
-	SetLevel(ctx context.Context, level LoggingLevel) error
+	SetLevel(ctx context.Context, level mcp.LoggingLevel) error
 
 	// Complete requests completion options for a given argument
 	Complete(
 		ctx context.Context,
 		ref interface{},
-		argument CompleteArgument,
-	) (*CompleteResult, error)
+		argument mcp.CompleteArgument,
+	) (*mcp.CompleteResult, error)
 }

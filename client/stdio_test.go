@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func compileTestServer(outputPath string) error {
@@ -43,7 +45,7 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		capabilities := ClientCapabilities{
+		capabilities := mcp.ClientCapabilities{
 			Experimental: map[string]map[string]interface{}{},
 			Roots: &struct {
 				ListChanged bool `json:"listChanged"`
@@ -52,7 +54,7 @@ func TestStdioMCPClient(t *testing.T) {
 			},
 		}
 
-		clientInfo := Implementation{
+		clientInfo := mcp.Implementation{
 			Name:    "test-client",
 			Version: "1.0.0",
 		}
@@ -193,7 +195,7 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		err := client.SetLevel(ctx, LoggingLevelInfo)
+		err := client.SetLevel(ctx, mcp.LoggingLevelInfo)
 		if err != nil {
 			t.Errorf("SetLevel failed: %v", err)
 		}
@@ -203,12 +205,12 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		ref := PromptReference{
+		ref := mcp.PromptReference{
 			Type: "ref/prompt",
 			Name: "test-prompt",
 		}
 
-		arg := CompleteArgument{
+		arg := mcp.CompleteArgument{
 			Name:  "test-arg",
 			Value: "test-value",
 		}
