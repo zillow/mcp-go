@@ -330,13 +330,6 @@ func printToolResult(result *mcp.CallToolResult) {
 }
 ```
 
-## Examples
-
-See the examples /examples directory for implementation examples including:
-
-- Filesystem MCP server integration using stdio transport
-- More examples coming soon...
-
 ## Contributing
 
 I'm not an expert and this is my first Go library, so contributions are very welcome! Whether it's:
