@@ -33,14 +33,14 @@ type JSONRPCResponse struct {
 
 // StdioServer wraps a DefaultServer and handles stdio communication
 type StdioServer struct {
-	server    *DefaultServer
+	server    MCPServer
 	sigChan   chan os.Signal
 	errLogger *log.Logger
 	done      chan struct{}
 }
 
 // ServeStdio creates a stdio server wrapper around an existing DefaultServer
-func ServeStdio(server *DefaultServer) error {
+func ServeStdio(server MCPServer) error {
 	s := &StdioServer{
 		server:    server,
 		sigChan:   make(chan os.Signal, 1),

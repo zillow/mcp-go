@@ -21,7 +21,7 @@ func (e CalculationError) Error() string {
 
 // Calculator implements basic arithmetic operations
 type Calculator struct {
-	server *server.DefaultServer
+	server server.MCPServer
 }
 
 // NewCalculator creates a new calculator server

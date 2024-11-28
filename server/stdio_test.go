@@ -16,7 +16,7 @@ import (
 )
 
 type testStdioServer struct {
-	server     *DefaultServer
+	server     MCPServer
 	stdin      *os.File
 	stdout     *os.File
 	stderr     *os.File

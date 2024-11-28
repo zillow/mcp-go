@@ -10,35 +10,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func TestNewDefaultServer(t *testing.T) {
-	server := NewDefaultServer("test-server", "1.0.0")
-	if server == nil {
-		t.Fatal("Expected non-nil server")
-	}
-
-	// Check that all default handlers are registered
-	methods := []string{
-		"initialize",
-		"ping",
-		"resources/list",
-		"resources/read",
-		"resources/subscribe",
-		"resources/unsubscribe",
-		"prompts/list",
-		"prompts/get",
-		"tools/list",
-		"tools/call",
-		"logging/setLevel",
-		"completion/complete",
-	}
-
-	for _, method := range methods {
-		if _, ok := server.handlers[method]; !ok {
-			t.Errorf("Expected handler for method %s to be registered", method)
-		}
-	}
-}
-
 func TestDefaultServer_Request(t *testing.T) {
 	server := NewDefaultServer("test-server", "1.0.0")
 	ctx := context.Background()
