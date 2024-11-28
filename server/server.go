@@ -102,7 +102,7 @@ func (s *DefaultServer) Request(
 
 	if strings.Contains(method, "notifications") {
 		if s.handlers[method] == nil {
-			return nil, nil
+			return struct{}{}, nil
 		}
 
 		return s.handlers[method].(NotificationFunc)(ctx, params)
