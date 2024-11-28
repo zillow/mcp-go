@@ -363,7 +363,7 @@ func (s *DefaultServer) defaultInitialize(
 			Name:    s.name,
 			Version: s.version,
 		},
-		ProtocolVersion: "1.0",
+		ProtocolVersion: "2024-11-05",
 		Capabilities: mcp.ServerCapabilities{
 			Resources: &struct {
 				ListChanged bool `json:"listChanged"`

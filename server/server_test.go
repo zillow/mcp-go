@@ -66,7 +66,7 @@ func TestDefaultServer_Request(t *testing.T) {
 					Name:    "test-server",
 					Version: "1.0.0",
 				},
-				ProtocolVersion: "1.0",
+				ProtocolVersion: "2024-11-05",
 				Capabilities: mcp.ServerCapabilities{
 					Resources: &struct {
 						ListChanged bool `json:"listChanged"`
