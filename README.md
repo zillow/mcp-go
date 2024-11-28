@@ -13,15 +13,6 @@ Learn more at [modelcontextprotocol.io](https://modelcontextprotocol.io/) and vi
 go get github.com/mark3labs/mcp-go
 ```
 
-## Features
-
-- Standard IO (stdio) transport for communicating with child processes
-- Server-Sent Events (SSE) transport for client-server architectures
-
-## TODO
-- Implement server package
-- Other stuff???
-
 ## Creating a Server
 ```go
 package main
