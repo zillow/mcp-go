@@ -12,25 +12,6 @@ import (
 	"syscall"
 )
 
-// JSONRPCRequest represents a JSON-RPC 2.0 request
-type JSONRPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      interface{}     `json:"id"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params"`
-}
-
-// JSONRPCResponse represents a JSON-RPC 2.0 response
-type JSONRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      interface{} `json:"id,omitempty"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
-}
-
 // StdioServer wraps a DefaultServer and handles stdio communication
 type StdioServer struct {
 	server    MCPServer

@@ -1,13 +1,10 @@
-package main
+package server
 
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // CalculationError represents an error during calculation
@@ -19,24 +16,7 @@ func (e CalculationError) Error() string {
 	return e.Message
 }
 
-// Calculator implements basic arithmetic operations
-type Calculator struct {
-	server server.MCPServer
-}
-
-// NewCalculator creates a new calculator server
-func NewCalculator() *Calculator {
-	s := server.NewDefaultServer("calculator", "1.0.0")
-	calc := &Calculator{server: s}
-
-	// Register calculator tools
-	s.HandleCallTool(calc.handleToolCall)
-	s.HandleListTools(calc.handleListTools)
-
-	return calc
-}
-
-func (c *Calculator) handleListTools(
+func HandleListTools(
 	ctx context.Context,
 	cursor *string,
 ) (*mcp.ListToolsResult, error) {
@@ -114,7 +94,7 @@ func (c *Calculator) handleListTools(
 	}, nil
 }
 
-func (c *Calculator) handleToolCall(
+func HandleToolCall(
 	ctx context.Context,
 	name string,
 	args map[string]interface{},
@@ -156,17 +136,4 @@ func (c *Calculator) handleToolCall(
 			},
 		},
 	}, nil
-}
-
-func (c *Calculator) Serve() error {
-	return server.ServeStdio(c.server)
-}
-
-func main() {
-	calc := NewCalculator()
-
-	if err := calc.Serve(); err != nil {
-		log.Printf("Server error: %v\n", err)
-		os.Exit(1)
-	}
 }
