@@ -23,7 +23,7 @@ func TestDefaultServer_Request(t *testing.T) {
 		name           string
 		request        JSONRPCRequest
 		expectedResult interface{}
-		expectedError  *JSONRPCResponse
+		expectedError  JSONRPCResponse
 	}{
 		{
 			name: "Initialize",
@@ -76,7 +76,7 @@ func TestDefaultServer_Request(t *testing.T) {
 				Method:  "invalid",
 				Params:  json.RawMessage(`{}`),
 			},
-			expectedError: &JSONRPCResponse{
+			expectedError: JSONRPCResponse{
 				JSONRPC: "2.0",
 				ID:      5,
 				Error: &struct {
@@ -94,7 +94,7 @@ func TestDefaultServer_Request(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := s.Request(ctx, tt.request)
 
-			if tt.expectedError != nil {
+			if tt.expectedError != (JSONRPCResponse{}) {
 				assert.Equal(t, tt.expectedError, result)
 			} else {
 				assert.NotNil(t, result)

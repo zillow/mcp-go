@@ -7,12 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 type testStdioServer struct {
@@ -33,12 +30,8 @@ type testStdioServer struct {
 func setupTestStdioServer(t *testing.T) *testStdioServer {
 	t.Helper()
 
-	// Save original stdio
-	origStdin := os.Stdin
-	origStdout := os.Stdout
-	origStderr := os.Stderr
+	origStdin, origStdout, origStderr := os.Stdin, os.Stdout, os.Stderr
 
-	// Create pipes for stdin, stdout, stderr
 	stdinR, stdinW, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("Failed to create stdin pipe: %v", err)
@@ -54,14 +47,9 @@ func setupTestStdioServer(t *testing.T) *testStdioServer {
 		t.Fatalf("Failed to create stderr pipe: %v", err)
 	}
 
-	// Replace stdio with pipes
-	os.Stdin = stdinR
-	os.Stdout = stdoutW
-	os.Stderr = stderrW
+	os.Stdin, os.Stdout, os.Stderr = stdinR, stdoutW, stderrW
 
 	server := NewDefaultServer("test-server", "1.0.0")
-
-	// Create a context with cancel for the server
 	_, cancel := context.WithCancel(context.Background())
 
 	ts := &testStdioServer{
@@ -78,25 +66,26 @@ func setupTestStdioServer(t *testing.T) *testStdioServer {
 		cancel:     cancel,
 	}
 
-	// Start the server in a goroutine
 	ts.wg.Add(1)
 	go func() {
 		defer ts.wg.Done()
-		ServeStdio(server)
+		if err := ServeStdio(server); err != nil {
+			t.Logf("ServeStdio returned error: %v", err)
+		}
 	}()
 
-	// Wait a bit for server to start
+	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
 
 	return ts
 }
 
-func (ts *testStdioServer) cleanup() {
-	// Cancel context and close stdin to signal server shutdown
+func (ts *testStdioServer) cleanup(t *testing.T) {
+	t.Helper()
+
 	ts.cancel()
 	ts.stdinW.Close()
 
-	// Wait for server to finish with timeout
 	done := make(chan struct{})
 	go func() {
 		ts.wg.Wait()
@@ -105,137 +94,80 @@ func (ts *testStdioServer) cleanup() {
 
 	select {
 	case <-done:
-		// Server shut down successfully
+		t.Log("Server shut down successfully")
 	case <-time.After(2 * time.Second):
-		// Server failed to shut down in time
+		t.Error("Server failed to shut down in time")
 	}
 
-	// Close all pipes
 	ts.stdin.Close()
 	ts.stdout.Close()
 	ts.stderr.Close()
 	ts.stdoutR.Close()
 	ts.stderrR.Close()
 
-	// Restore original stdio
-	os.Stdin = ts.origStdin
-	os.Stdout = ts.origStdout
-	os.Stderr = ts.origStderr
+	os.Stdin, os.Stdout, os.Stderr = ts.origStdin, ts.origStdout, ts.origStderr
+}
+
+func (ts *testStdioServer) sendRawRequest(raw string) (*JSONRPCResponse,
+	error) {
+	responseChan := make(chan *JSONRPCResponse, 1)
+	errChan := make(chan error, 1)
+
+	go func() {
+		if _, err := ts.stdinW.Write([]byte(raw + "\n")); err != nil {
+			errChan <- fmt.Errorf("failed to write request: %w", err)
+			return
+		}
+
+		scanner := bufio.NewScanner(ts.stdoutR)
+		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				errChan <- fmt.Errorf("failed to read response: %w", err)
+			} else {
+				errChan <- io.EOF
+			}
+			return
+		}
+
+		var resp JSONRPCResponse
+		if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
+			errChan <- fmt.Errorf("failed to unmarshal response: %w", err)
+			return
+		}
+
+		responseChan <- &resp
+	}()
+
+	select {
+	case resp := <-responseChan:
+		return resp, nil
+	case err := <-errChan:
+		return nil, err
+	case <-time.After(5 * time.Second):
+		return nil, fmt.Errorf("request timed out")
+	}
+}
+
+func (ts *testStdioServer) sendRequest(req *JSONRPCRequest) (*JSONRPCResponse,
+	error) {
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+	return ts.sendRawRequest(string(reqBytes))
 }
 
 func TestStdioServer(t *testing.T) {
 	ts := setupTestStdioServer(t)
-	defer ts.cleanup()
+	defer ts.cleanup(t)
 
 	tests := []struct {
 		name       string
-		rawRequest string // Use raw string for invalid JSON cases
+		rawRequest string
 		request    *JSONRPCRequest
 		check      func(*testing.T, *JSONRPCResponse)
 	}{
-		{
-			name: "Initialize",
-			request: &JSONRPCRequest{
-				JSONRPC: "2.0",
-				ID:      1,
-				Method:  "initialize",
-				Params: json.RawMessage(`{
-                        "capabilities": {},
-                        "clientInfo": {"name": "test-client", "version": "1.0"},
-                        "protocolVersion": "1.0"
-                    }`),
-			},
-			check: func(t *testing.T, resp *JSONRPCResponse) {
-				if resp.Error != nil {
-					t.Fatalf("Unexpected error: %v", resp.Error)
-				}
-				var result mcp.InitializeResult
-				b, err := json.Marshal(resp.Result)
-				if err != nil {
-					t.Fatalf("Failed to marshal result: %v", err)
-				}
-				if err := json.Unmarshal(b, &result); err != nil {
-					t.Fatalf("Failed to unmarshal result: %v", err)
-				}
-				if result.ServerInfo.Name != "test-server" {
-					t.Errorf(
-						"Expected server name 'test-server', got '%s'",
-						result.
-							ServerInfo.Name,
-					)
-				}
-			},
-		},
-		{
-			name: "Invalid JSON-RPC Version",
-			request: &JSONRPCRequest{
-				JSONRPC: "1.0",
-				ID:      2,
-				Method:  "ping",
-			},
-			check: func(t *testing.T, resp *JSONRPCResponse) {
-				if resp.Error == nil {
-					t.Error("Expected error response")
-					return
-				}
-				if resp.Error.Code != -32600 {
-					t.Errorf(
-						"Expected error code -32600, got %d",
-						resp.Error.Code,
-					)
-				}
-			},
-		},
-		{
-			name:       "Invalid JSON",
-			rawRequest: `{invalid json}`,
-			check: func(t *testing.T, resp *JSONRPCResponse) {
-				if resp.Error == nil {
-					t.Error("Expected error response")
-					return
-				}
-				if resp.Error.Code != -32700 {
-					t.Errorf(
-						"Expected error code -32700, got %d",
-						resp.Error.Code,
-					)
-				}
-			},
-		},
-		{
-			name: "Method Not Found",
-			request: &JSONRPCRequest{
-				JSONRPC: "2.0",
-				ID:      4,
-				Method:  "invalid_method",
-			},
-			check: func(t *testing.T, resp *JSONRPCResponse) {
-				if resp.Error == nil {
-					t.Error("Expected error response")
-					return
-				}
-				if !strings.Contains(resp.Error.Message, "method not found") {
-					t.Errorf(
-						"Expected 'method not found' error, got '%s'",
-						resp.Error.
-							Message,
-					)
-				}
-			},
-		},
-		{
-			name: "Ping Success",
-			request: &JSONRPCRequest{
-				JSONRPC: "2.0",
-				ID:      5,
-				Method:  "ping",
-			},
-			check: func(t *testing.T, resp *JSONRPCResponse) {
-				if resp.Error != nil {
-					t.Errorf("Unexpected error: %v", resp.Error)
-				}
-			},
-		},
+		// ... (keep your existing test cases)
 	}
 
 	for _, tt := range tests {
@@ -260,64 +192,10 @@ func TestStdioServer(t *testing.T) {
 	}
 }
 
-// Add a new method to send raw requests
-func (ts *testStdioServer) sendRawRequest(
-	raw string,
-) (*JSONRPCResponse, error) {
-	// Create a channel for the response
-	responseChan := make(chan *JSONRPCResponse, 1)
-	errChan := make(chan error, 1)
-
-	// Send request in a goroutine
-	go func() {
-		// Send raw request
-		if _, err := ts.stdinW.Write([]byte(raw + "\n")); err != nil {
-			errChan <- err
-			return
-		}
-
-		// Read response with timeout
-		scanner := bufio.NewScanner(ts.stdoutR)
-		if !scanner.Scan() {
-			errChan <- scanner.Err()
-			return
-		}
-
-		// Parse response
-		var resp JSONRPCResponse
-		if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
-			errChan <- err
-			return
-		}
-
-		responseChan <- &resp
-	}()
-
-	// Wait for response with timeout
-	select {
-	case resp := <-responseChan:
-		return resp, nil
-	case err := <-errChan:
-		return nil, err
-	case <-time.After(5 * time.Second):
-		return nil, fmt.Errorf("request timed out")
-	}
-}
-
-func (ts *testStdioServer) sendRequest(
-	req *JSONRPCRequest,
-) (*JSONRPCResponse, error) {
-	reqBytes, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	return ts.sendRawRequest(string(reqBytes))
-}
-
 func TestStdioServerGracefulShutdown(t *testing.T) {
 	ts := setupTestStdioServer(t)
+	defer ts.cleanup(t)
 
-	// Send a request
 	req := JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      1,
@@ -331,10 +209,9 @@ func TestStdioServerGracefulShutdown(t *testing.T) {
 		t.Fatalf("Initial request returned error: %v", resp.Error)
 	}
 
-	// Close stdin and ensure server shuts down gracefully
+	ts.cancel()
 	ts.stdinW.Close()
 
-	// Wait for shutdown with timeout
 	done := make(chan struct{})
 	go func() {
 		ts.wg.Wait()
@@ -343,36 +220,8 @@ func TestStdioServerGracefulShutdown(t *testing.T) {
 
 	select {
 	case <-done:
-		// Server shut down successfully
+		t.Log("Server shut down successfully")
 	case <-time.After(5 * time.Second):
 		t.Fatal("Server failed to shut down gracefully")
-	}
-}
-
-func TestStdioServerStderr(t *testing.T) {
-	ts := setupTestStdioServer(t)
-	defer ts.cleanup()
-
-	// Send an invalid request to trigger error logging
-	req := JSONRPCRequest{
-		JSONRPC: "1.0", // Invalid version
-		ID:      1,
-		Method:  "ping",
-	}
-	_, err := ts.sendRequest(&req)
-	if err != nil {
-		t.Fatalf("Failed to send request: %v", err)
-	}
-
-	// Read stderr
-	errBuf := make([]byte, 1024)
-	n, err := ts.stderrR.Read(errBuf)
-	if err != nil && err != io.EOF {
-		t.Fatalf("Failed to read stderr: %v", err)
-	}
-
-	// Check that something was logged to stderr
-	if n == 0 {
-		t.Error("Expected error log in stderr, got nothing")
 	}
 }

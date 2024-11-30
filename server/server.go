@@ -110,6 +110,10 @@ func (s *DefaultServer) Request(
 ) JSONRPCResponse {
 	result, err := s.handleRequest(ctx, request.Method, request.Params)
 	if err != nil {
+		errorCode := -32603 // Internal error (default)
+		if err.Error() == fmt.Sprintf("method not found: %s", request.Method) {
+			errorCode = -32601 // Method not found
+		}
 		return JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      request.ID,
@@ -117,7 +121,7 @@ func (s *DefaultServer) Request(
 				Code    int    `json:"code"`
 				Message string `json:"message"`
 			}{
-				Code:    -32603, // Internal error
+				Code:    errorCode,
 				Message: err.Error(),
 			},
 		}
