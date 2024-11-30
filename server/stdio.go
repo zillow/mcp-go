@@ -12,7 +12,7 @@ import (
 	"syscall"
 )
 
-// StdioServer wraps a DefaultServer and handles stdio communication
+// StdioServer wraps a MCPServer and handles stdio communication
 type StdioServer struct {
 	server    MCPServer
 	sigChan   chan os.Signal
@@ -20,7 +20,7 @@ type StdioServer struct {
 	done      chan struct{}
 }
 
-// ServeStdio creates a stdio server wrapper around an existing DefaultServer
+// ServeStdio creates a stdio server wrapper around an existing MCPServer
 func ServeStdio(server MCPServer) error {
 	s := &StdioServer{
 		server:    server,
@@ -97,55 +97,28 @@ func (s *StdioServer) handleMessage(ctx context.Context, line string) error {
 	// Parse the JSON-RPC request
 	var request JSONRPCRequest
 	if err := json.Unmarshal([]byte(line), &request); err != nil {
-		s.writeError(nil, -32700, "Parse error")
+		s.writeResponse(JSONRPCResponse{
+			JSONRPC: "2.0",
+			Error: &struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			}{
+				Code:    -32700,
+				Message: "Parse error",
+			},
+		})
 		return fmt.Errorf("failed to parse JSON-RPC request: %w", err)
 	}
 
-	// Validate JSON-RPC version
-	if request.JSONRPC != "2.0" {
-		s.writeError(request.ID, -32600, "Invalid Request")
-		return fmt.Errorf("invalid JSON-RPC version")
-	}
-
 	// Handle the request using the wrapped server
-	result, err := s.server.Request(ctx, request.Method, request.Params)
-	if err != nil {
-		s.writeError(request.ID, -32603, err.Error())
-		return fmt.Errorf("request handling error: %w", err)
-	}
-
-	// Ignore empty results
-	if result == nil {
-		return nil
-	}
+	response := s.server.Request(ctx, request)
 
 	// Send the response
-	response := JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      request.ID,
-		Result:  result,
-	}
-
 	if err := s.writeResponse(response); err != nil {
 		return fmt.Errorf("failed to write response: %w", err)
 	}
 
 	return nil
-}
-
-func (s *StdioServer) writeError(id interface{}, code int, message string) {
-	response := JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      id,
-		Error: &struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		}{
-			Code:    code,
-			Message: message,
-		},
-	}
-	s.writeResponse(response)
 }
 
 func (s *StdioServer) writeResponse(response JSONRPCResponse) error {

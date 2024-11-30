@@ -160,7 +160,8 @@ func TestStdioServer(t *testing.T) {
 				if result.ServerInfo.Name != "test-server" {
 					t.Errorf(
 						"Expected server name 'test-server', got '%s'",
-						result.ServerInfo.Name,
+						result.
+							ServerInfo.Name,
 					)
 				}
 			},
@@ -216,7 +217,8 @@ func TestStdioServer(t *testing.T) {
 				if !strings.Contains(resp.Error.Message, "method not found") {
 					t.Errorf(
 						"Expected 'method not found' error, got '%s'",
-						resp.Error.Message,
+						resp.Error.
+							Message,
 					)
 				}
 			},

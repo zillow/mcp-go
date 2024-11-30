@@ -59,11 +59,13 @@ func TestSessionSpecificMessages(t *testing.T) {
 
 	_, _ = reader1.ReadString('\n')
 	dataLine1, _ := reader1.ReadString('\n')
-	sessionID1 := strings.Split(strings.Split(dataLine1, "sessionId=")[1], "\n")[0]
+	sessionID1 := strings.Split(strings.Split(dataLine1, "sessionId=")[1],
+		"\n")[0]
 
 	_, _ = reader2.ReadString('\n')
 	dataLine2, _ := reader2.ReadString('\n')
-	sessionID2 := strings.Split(strings.Split(dataLine2, "sessionId=")[1], "\n")[0]
+	sessionID2 := strings.Split(strings.Split(dataLine2, "sessionId=")[1],
+		"\n")[0]
 
 	// Create message channels
 	messages1 := make(chan string)
@@ -129,7 +131,6 @@ func TestInvalidJSONRPC(t *testing.T) {
 	tests := []struct {
 		name           string
 		request        interface{}
-		expectedCode   int
 		expectedError  int
 		expectedStatus int
 	}{

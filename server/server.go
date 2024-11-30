@@ -29,11 +29,7 @@ type JSONRPCResponse struct {
 }
 
 type MCPServer interface {
-	Request(
-		ctx context.Context,
-		method string,
-		params json.RawMessage,
-	) (interface{}, error)
+	Request(ctx context.Context, request JSONRPCRequest) JSONRPCResponse
 	HandleInitialize(InitializeFunc)
 	HandlePing(PingFunc)
 	HandleListResources(ListResourcesFunc)
@@ -108,13 +104,34 @@ func NewDefaultServer(name, version string) MCPServer {
 	return s
 }
 
-// Request is the main entrypoint of the server
 func (s *DefaultServer) Request(
 	ctx context.Context,
-	method string,
-	params json.RawMessage,
-) (interface{}, error) {
+	request JSONRPCRequest,
+) JSONRPCResponse {
+	result, err := s.handleRequest(ctx, request.Method, request.Params)
+	if err != nil {
+		return JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      request.ID,
+			Error: &struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			}{
+				Code:    -32603, // Internal error
+				Message: err.Error(),
+			},
+		}
+	}
 
+	return JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      request.ID,
+		Result:  result,
+	}
+}
+
+func (s *DefaultServer) handleRequest(ctx context.Context, method string,
+	params json.RawMessage) (interface{}, error) {
 	// If params is nil, use empty object for methods that expect params
 	if params == nil {
 		params = json.RawMessage("{}")

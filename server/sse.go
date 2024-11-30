@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/charmbracelet/log"
 	"net/http"
 	"net/http/httptest"
 	"sync"
+
+	"github.com/charmbracelet/log"
 
 	"github.com/google/uuid"
 )
@@ -46,7 +47,6 @@ func NewTestServer(mcpServer MCPServer) (*SSEServer, *httptest.Server) {
 			switch r.URL.Path {
 			case "/sse":
 				sseServer.handleSSE(w, r)
-
 			case "/message":
 				sseServer.handleMessage(w, r)
 			default:
@@ -122,11 +122,8 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 	defer s.sessions.Delete(sessionID)
 
 	// Send endpoint event
-	messageEndpoint := fmt.Sprintf(
-		"%s/message?sessionId=%s",
-		s.baseURL,
-		sessionID,
-	)
+	messageEndpoint := fmt.Sprintf("%s/message?sessionId=%s", s.baseURL,
+		sessionID)
 	fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", messageEndpoint)
 	flusher.Flush()
 
@@ -161,30 +158,8 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate JSONRPC version
-	if request.JSONRPC != "2.0" {
-		s.writeJSONRPCError(w, request.ID, -32600, "Invalid JSON-RPC version")
-		return
-	}
-
 	// Process request through MCPServer
-	result, err := s.mcpServer.Request(
-		r.Context(),
-		request.Method,
-		request.Params,
-	)
-	if err != nil {
-		// Handle error
-		s.writeJSONRPCError(w, request.ID, -32603, err.Error())
-		return
-	}
-
-	// Create successful response
-	response := JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      request.ID,
-		Result:  result,
-	}
+	response := s.mcpServer.Request(r.Context(), request)
 
 	// Send response via SSE
 	eventData, _ := json.Marshal(response)
@@ -197,12 +172,8 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (s *SSEServer) writeJSONRPCError(
-	w http.ResponseWriter,
-	id interface{},
-	code int,
-	message string,
-) {
+func (s *SSEServer) writeJSONRPCError(w http.ResponseWriter, id interface{},
+	code int, message string) {
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
