@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/charmbracelet/log"
+	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/google/uuid"
 )
@@ -152,7 +153,7 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	session := sessionI.(*sseSession)
 
 	// Parse JSONRPC request
-	var request JSONRPCRequest
+	var request mcp.JSONRPCRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		s.writeJSONRPCError(w, nil, -32700, "Parse error")
 		return
@@ -174,12 +175,13 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 
 func (s *SSEServer) writeJSONRPCError(w http.ResponseWriter, id interface{},
 	code int, message string) {
-	response := JSONRPCResponse{
+	response := mcp.JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
-		Error: &struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
+		Error: struct {
+			Code    int         `json:"code"`
+			Message string      `json:"message"`
+			Data    interface{} `json:"data,omitempty"`
 		}{
 			Code:    code,
 			Message: message,

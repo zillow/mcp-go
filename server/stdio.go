@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // StdioServer wraps a MCPServer and handles stdio communication
@@ -95,15 +97,16 @@ func (s *StdioServer) serve() error {
 
 func (s *StdioServer) handleMessage(ctx context.Context, line string) error {
 	// Parse the JSON-RPC request
-	var request JSONRPCRequest
+	var request mcp.JSONRPCRequest
 	if err := json.Unmarshal([]byte(line), &request); err != nil {
-		s.writeResponse(JSONRPCResponse{
+		s.writeResponse(mcp.JSONRPCResponse{
 			JSONRPC: "2.0",
-			Error: &struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
+			Error: struct {
+				Code    int         `json:"code"`
+				Message string      `json:"message"`
+				Data    interface{} `json:"data,omitempty"`
 			}{
-				Code:    -32700,
+				Code:    mcp.PARSE_ERROR,
 				Message: "Parse error",
 			},
 		})
@@ -121,7 +124,7 @@ func (s *StdioServer) handleMessage(ctx context.Context, line string) error {
 	return nil
 }
 
-func (s *StdioServer) writeResponse(response JSONRPCResponse) error {
+func (s *StdioServer) writeResponse(response mcp.JSONRPCResponse) error {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		return err

@@ -21,13 +21,13 @@ func TestDefaultServer_Request(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		request        JSONRPCRequest
+		request        mcp.JSONRPCRequest
 		expectedResult interface{}
-		expectedError  JSONRPCResponse
+		expectedError  mcp.JSONRPCResponse
 	}{
 		{
 			name: "Initialize",
-			request: JSONRPCRequest{
+			request: mcp.JSONRPCRequest{}{
 				JSONRPC: "2.0",
 				ID:      1,
 				Method:  "initialize",
@@ -39,7 +39,7 @@ func TestDefaultServer_Request(t *testing.T) {
 		},
 		{
 			name: "Ping",
-			request: JSONRPCRequest{
+			request: mcp.JSONRPCRequest{
 				JSONRPC: "2.0",
 				ID:      2,
 				Method:  "ping",
@@ -49,7 +49,7 @@ func TestDefaultServer_Request(t *testing.T) {
 		},
 		{
 			name: "ListResources",
-			request: JSONRPCRequest{
+			request: mcp.JSONRPCRequest{
 				JSONRPC: "2.0",
 				ID:      3,
 				Method:  "resources/list",
@@ -59,7 +59,7 @@ func TestDefaultServer_Request(t *testing.T) {
 		},
 		{
 			name: "ListResourceTemplates",
-			request: JSONRPCRequest{
+			request: mcp.JSONRPCRequest{
 				JSONRPC: "2.0",
 				ID:      3,
 				Method:  "resources/templates/list",
@@ -69,7 +69,7 @@ func TestDefaultServer_Request(t *testing.T) {
 		},
 		{
 			name: "ReadResource",
-			request: JSONRPCRequest{
+			request: mcp.JSONRPCRequest{
 				JSONRPC: "2.0",
 				ID:      4,
 				Method:  "resources/read",
@@ -79,13 +79,13 @@ func TestDefaultServer_Request(t *testing.T) {
 		},
 		{
 			name: "InvalidMethod",
-			request: JSONRPCRequest{
+			request: mcp.JSONRPCRequest{
 				JSONRPC: "2.0",
 				ID:      5,
 				Method:  "invalid",
 				Params:  json.RawMessage(`{}`),
 			},
-			expectedError: JSONRPCResponse{
+			expectedError: mcp.JSONRPCResponse{
 				JSONRPC: "2.0",
 				ID:      5,
 				Error: &struct {
@@ -103,7 +103,7 @@ func TestDefaultServer_Request(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := s.Request(ctx, tt.request)
 
-			if tt.expectedError != (JSONRPCResponse{}) {
+			if tt.expectedError != (mcp.JSONRPCResponse{}) {
 				assert.Equal(t, tt.expectedError, result)
 			} else {
 				assert.NotNil(t, result)
@@ -127,7 +127,7 @@ func TestDefaultServer_HandleNotification(t *testing.T) {
 		},
 	)
 
-	request := JSONRPCRequest{
+	request := mcp.JSONRPCRequest{
 		JSONRPC: "2.0",
 		Method:  "notifications/test",
 		Params:  json.RawMessage(`{}`),
