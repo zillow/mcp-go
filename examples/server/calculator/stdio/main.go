@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	example "github.com/mark3labs/mcp-go/examples/server"
+	example "github.com/mark3labs/mcp-go/examples/server/calculator"
 	"github.com/mark3labs/mcp-go/server"
 )
 

@@ -32,8 +32,7 @@ func TestDefaultServer_Request(t *testing.T) {
 				ID:      1,
 				Method:  "initialize",
 				Params: json.RawMessage(
-					`{"capabilities":{},"clientInfo":{"name":"test",
-  "version":"1.0.0"},"protocolVersion":"2024-11-05"}`,
+					`{"capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"},"protocolVersion":"2024-11-05"}`,
 				),
 			},
 			expectedResult: &mcp.InitializeResult{},
@@ -57,6 +56,16 @@ func TestDefaultServer_Request(t *testing.T) {
 				Params:  json.RawMessage(`{}`),
 			},
 			expectedResult: &mcp.ListResourcesResult{},
+		},
+		{
+			name: "ListResourceTemplates",
+			request: JSONRPCRequest{
+				JSONRPC: "2.0",
+				ID:      3,
+				Method:  "resources/templates/list",
+				Params:  json.RawMessage(`{}`),
+			},
+			expectedResult: &mcp.ListResourceTemplatesResult{},
 		},
 		{
 			name: "ReadResource",
@@ -141,6 +150,7 @@ func TestDefaultServer_HandlersRegistration(t *testing.T) {
 		{"Initialize", func(InitializeFunc) {}},
 		{"Ping", func(PingFunc) {}},
 		{"ListResources", func(ListResourcesFunc) {}},
+		{"ListResourceTemplates", func(ListResourceTemplatesFunc) {}},
 		{"ReadResource", func(ReadResourceFunc) {}},
 		{"Subscribe", func(SubscribeFunc) {}},
 		{"Unsubscribe", func(UnsubscribeFunc) {}},
@@ -169,6 +179,8 @@ func getMethodName(handlerName string) string {
 		return "ping"
 	case "ListResources":
 		return "resources/list"
+	case "ListResourceTemplates":
+		return "resources/templates/list"
 	case "ReadResource":
 		return "resources/read"
 	case "Subscribe":
