@@ -345,3 +345,12 @@ Feel free to open issues and PRs. Let's make this library better together.
 ## License
 
 MIT License
+
+## Other Sdks
+
+### Official
+- [typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk)
+- [python-sdk](https://github.com/modelcontextprotocol/python-sdk)
+
+### Community
+- [rust-sdk](https://github.com/AntigmaLabs/mcp-sdk)
