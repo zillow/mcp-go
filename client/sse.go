@@ -446,11 +446,11 @@ func (c *SSEMCPClient) SetLevel(
 func (c *SSEMCPClient) Complete(
 	ctx context.Context,
 	ref interface{},
-	argument mcp.CompleteArgument,
+	argument mcp.CompleteRequestParamsArgument,
 ) (*mcp.CompleteResult, error) {
 	params := struct {
-		Ref      interface{}          `json:"ref"`
-		Argument mcp.CompleteArgument `json:"argument"`
+		Ref      interface{}                       `json:"ref"`
+		Argument mcp.CompleteRequestParamsArgument `json:"argument"`
 	}{
 		Ref:      ref,
 		Argument: argument,

@@ -60,8 +60,6 @@ func TestSSEMCPClient(t *testing.T) {
 		assert.Equal(t, "test-server", result.ServerInfo.Name)
 		assert.Equal(t, "1.0.0", result.ServerInfo.Version)
 		assert.Equal(t, "2024-11-05", result.ProtocolVersion)
-		assert.True(t, result.Capabilities.Resources.ListChanged)
-		assert.True(t, result.Capabilities.Resources.Subscribe)
 	})
 
 	t.Run("Ping", func(t *testing.T) {
@@ -125,9 +123,13 @@ func TestSSEMCPClient(t *testing.T) {
 	})
 
 	t.Run("Complete", func(t *testing.T) {
-		result, err := client.Complete(ctx, "test-ref", mcp.CompleteArgument{
-			Name: "test-arg",
-		})
+		result, err := client.Complete(
+			ctx,
+			"test-ref",
+			mcp.CompleteRequestParamsArgument{
+				Name: "test-arg",
+			},
+		)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result.Completion.Values)

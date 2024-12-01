@@ -47,9 +47,7 @@ func TestStdioMCPClient(t *testing.T) {
 
 		capabilities := mcp.ClientCapabilities{
 			Experimental: map[string]map[string]interface{}{},
-			Roots: &struct {
-				ListChanged bool `json:"listChanged"`
-			}{
+			Roots: &mcp.ClientCapabilitiesRoots{
 				ListChanged: true,
 			},
 		}
@@ -210,7 +208,7 @@ func TestStdioMCPClient(t *testing.T) {
 			Name: "test-prompt",
 		}
 
-		arg := mcp.CompleteArgument{
+		arg := mcp.CompleteRequestParamsArgument{
 			Name:  "test-arg",
 			Value: "test-value",
 		}

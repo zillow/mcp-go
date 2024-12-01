@@ -67,7 +67,7 @@ type CallToolFunc func(ctx context.Context, name string, arguments map[string]in
 
 type SetLevelFunc func(ctx context.Context, level mcp.LoggingLevel) error
 
-type CompleteFunc func(ctx context.Context, ref interface{}, argument mcp.CompleteArgument) (*mcp.CompleteResult, error)
+type CompleteFunc func(ctx context.Context, ref interface{}, argument mcp.CompleteRequestParamsArgument) (*mcp.CompleteResult, error)
 
 type NotificationFunc func(ctx context.Context, args any) (any, error)
 
@@ -316,8 +316,8 @@ func (s *DefaultServer) handleRequest(ctx context.Context, method string,
 
 	case "completion/complete":
 		var p struct {
-			Ref      interface{}          `json:"ref"`
-			Argument mcp.CompleteArgument `json:"argument"`
+			Ref      interface{}                       `json:"ref"`
+			Argument mcp.CompleteRequestParamsArgument `json:"argument"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, fmt.Errorf("failed to parse parameters: %w", err)
@@ -429,13 +429,7 @@ func (s *DefaultServer) defaultInitialize(
 		},
 		ProtocolVersion: "2024-11-05",
 		Capabilities: mcp.ServerCapabilities{
-			Resources: &struct {
-				ListChanged bool `json:"listChanged"`
-				Subscribe   bool `json:"subscribe"`
-			}{
-				ListChanged: true,
-				Subscribe:   true,
-			},
+			Resources: &mcp.ServerCapabilitiesResources{},
 		},
 	}, nil
 }
@@ -458,7 +452,7 @@ func (s *DefaultServer) defaultReadResource(
 	uri string,
 ) (*mcp.ReadResourceResult, error) {
 	return &mcp.ReadResourceResult{
-		Contents: []mcp.ResourceContents{},
+		Contents: []interface{}{},
 	}, nil
 }
 
@@ -510,7 +504,7 @@ func (s *DefaultServer) defaultCallTool(
 	arguments map[string]interface{},
 ) (*mcp.CallToolResult, error) {
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{},
+		Content: []interface{}{},
 	}, nil
 }
 
@@ -524,10 +518,10 @@ func (s *DefaultServer) defaultSetLevel(
 func (s *DefaultServer) defaultComplete(
 	ctx context.Context,
 	ref interface{},
-	argument mcp.CompleteArgument,
+	argument mcp.CompleteRequestParamsArgument,
 ) (*mcp.CompleteResult, error) {
 	return &mcp.CompleteResult{
-		Completion: mcp.Completion{
+		Completion: mcp.CompleteResultCompletion{
 			Values: []string{},
 		},
 	}, nil
