@@ -14,14 +14,16 @@ import (
 )
 
 type StdioMCPClient struct {
-	cmd         *exec.Cmd
-	stdin       io.WriteCloser
-	stdout      *bufio.Reader
-	requestID   atomic.Int64
-	responses   map[int64]chan *json.RawMessage
-	mu          sync.RWMutex
-	done        chan struct{}
-	initialized bool
+	cmd           *exec.Cmd
+	stdin         io.WriteCloser
+	stdout        *bufio.Reader
+	requestID     atomic.Int64
+	responses     map[int64]chan *json.RawMessage
+	mu            sync.RWMutex
+	done          chan struct{}
+	initialized   bool
+	notifications []func(mcp.JSONRPCNotification)
+	notifyMu      sync.RWMutex
 }
 
 func NewStdioMCPClient(
@@ -52,7 +54,13 @@ func NewStdioMCPClient(
 		return nil, fmt.Errorf("failed to start command: %w", err)
 	}
 
-	go client.readResponses()
+	// Start reading responses in a goroutine and wait for it to be ready
+	ready := make(chan struct{})
+	go func() {
+		close(ready)
+		client.readResponses()
+	}()
+	<-ready
 
 	return client, nil
 }
@@ -63,6 +71,14 @@ func (c *StdioMCPClient) Close() error {
 		return fmt.Errorf("failed to close stdin: %w", err)
 	}
 	return c.cmd.Wait()
+}
+
+func (c *StdioMCPClient) OnNotification(
+	handler func(notification mcp.JSONRPCNotification),
+) {
+	c.notifyMu.Lock()
+	defer c.notifyMu.Unlock()
+	c.notifications = append(c.notifications, handler)
 }
 
 func (c *StdioMCPClient) readResponses() {
@@ -79,31 +95,47 @@ func (c *StdioMCPClient) readResponses() {
 				return
 			}
 
-			var response struct {
-				ID     int64           `json:"id"`
-				Result json.RawMessage `json:"result,omitempty"`
-				Error  *struct {
+			var baseMessage struct {
+				JSONRPC string          `json:"jsonrpc"`
+				ID      *int64          `json:"id,omitempty"`
+				Method  string          `json:"method,omitempty"`
+				Result  json.RawMessage `json:"result,omitempty"`
+				Error   *struct {
 					Code    int    `json:"code"`
 					Message string `json:"message"`
 				} `json:"error,omitempty"`
 			}
 
-			if err := json.Unmarshal([]byte(line), &response); err != nil {
+			if err := json.Unmarshal([]byte(line), &baseMessage); err != nil {
+				continue
+			}
+
+			// Handle notification
+			if baseMessage.ID == nil {
+				var notification mcp.JSONRPCNotification
+				if err := json.Unmarshal([]byte(line), &notification); err != nil {
+					continue
+				}
+				c.notifyMu.RLock()
+				for _, handler := range c.notifications {
+					handler(notification)
+				}
+				c.notifyMu.RUnlock()
 				continue
 			}
 
 			c.mu.RLock()
-			ch, ok := c.responses[response.ID]
+			ch, ok := c.responses[*baseMessage.ID]
 			c.mu.RUnlock()
 
 			if ok {
-				if response.Error != nil {
+				if baseMessage.Error != nil {
 					ch <- nil // Signal error condition
 				} else {
-					ch <- &response.Result
+					ch <- &baseMessage.Result
 				}
 				c.mu.Lock()
-				delete(c.responses, response.ID)
+				delete(c.responses, *baseMessage.ID)
 				c.mu.Unlock()
 			}
 		}
@@ -121,13 +153,14 @@ func (c *StdioMCPClient) sendRequest(
 
 	id := c.requestID.Add(1)
 
+	// Create the complete request structure
 	request := struct {
 		JSONRPC string      `json:"jsonrpc"`
 		ID      int64       `json:"id"`
 		Method  string      `json:"method"`
 		Params  interface{} `json:"params,omitempty"`
 	}{
-		JSONRPC: "2.0",
+		JSONRPC: mcp.JSONRPC_VERSION,
 		ID:      id,
 		Method:  method,
 		Params:  params,
@@ -162,20 +195,23 @@ func (c *StdioMCPClient) sendRequest(
 	}
 }
 
+func (c *StdioMCPClient) Ping(ctx context.Context) error {
+	_, err := c.sendRequest(ctx, "ping", nil)
+	return err
+}
+
 func (c *StdioMCPClient) Initialize(
 	ctx context.Context,
-	capabilities mcp.ClientCapabilities,
-	clientInfo mcp.Implementation,
-	protocolVersion string,
+	request mcp.InitializeRequest,
 ) (*mcp.InitializeResult, error) {
 	params := struct {
-		Capabilities    mcp.ClientCapabilities `json:"capabilities"`
-		ClientInfo      mcp.Implementation     `json:"clientInfo"`
 		ProtocolVersion string                 `json:"protocolVersion"`
+		ClientInfo      mcp.Implementation     `json:"clientInfo"`
+		Capabilities    mcp.ClientCapabilities `json:"capabilities"`
 	}{
-		Capabilities:    capabilities,
-		ClientInfo:      clientInfo,
-		ProtocolVersion: protocolVersion,
+		ProtocolVersion: request.Params.ProtocolVersion,
+		ClientInfo:      request.Params.ClientInfo,
+		Capabilities:    request.Params.Capabilities,
 	}
 
 	response, err := c.sendRequest(ctx, "initialize", params)
@@ -192,22 +228,16 @@ func (c *StdioMCPClient) Initialize(
 	return &result, nil
 }
 
-func (c *StdioMCPClient) Ping(ctx context.Context) error {
-	_, err := c.sendRequest(ctx, "ping", nil)
-	return err
-}
-
 func (c *StdioMCPClient) ListResources(
 	ctx context.Context,
-	cursor *string,
-) (*mcp.ListResourcesResult, error) {
-	params := struct {
-		Cursor *string `json:"cursor,omitempty"`
-	}{
-		Cursor: cursor,
-	}
-
-	response, err := c.sendRequest(ctx, "resources/list", params)
+	request mcp.ListResourcesRequest,
+) (*mcp.
+	ListResourcesResult, error) {
+	response, err := c.sendRequest(
+		ctx,
+		"resources/list",
+		request.Params,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -220,17 +250,34 @@ func (c *StdioMCPClient) ListResources(
 	return &result, nil
 }
 
-func (c *StdioMCPClient) ReadResource(
+func (c *StdioMCPClient) ListResourceTemplates(
 	ctx context.Context,
-	uri string,
-) (*mcp.ReadResourceResult, error) {
-	params := struct {
-		URI string `json:"uri"`
-	}{
-		URI: uri,
+	request mcp.ListResourceTemplatesRequest,
+) (*mcp.
+	ListResourceTemplatesResult, error) {
+	response, err := c.sendRequest(
+		ctx,
+		"resources/templates/list",
+		request.Params,
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	response, err := c.sendRequest(ctx, "resources/read", params)
+	var result mcp.ListResourceTemplatesResult
+	if err := json.Unmarshal(*response, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return &result, nil
+}
+
+func (c *StdioMCPClient) ReadResource(
+	ctx context.Context,
+	request mcp.ReadResourceRequest,
+) (*mcp.ReadResourceResult,
+	error) {
+	response, err := c.sendRequest(ctx, "resources/read", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -243,39 +290,27 @@ func (c *StdioMCPClient) ReadResource(
 	return &result, nil
 }
 
-func (c *StdioMCPClient) Subscribe(ctx context.Context, uri string) error {
-	params := struct {
-		URI string `json:"uri"`
-	}{
-		URI: uri,
-	}
-
-	_, err := c.sendRequest(ctx, "resources/subscribe", params)
+func (c *StdioMCPClient) Subscribe(
+	ctx context.Context,
+	request mcp.SubscribeRequest,
+) error {
+	_, err := c.sendRequest(ctx, "resources/subscribe", request.Params)
 	return err
 }
 
-func (c *StdioMCPClient) Unsubscribe(ctx context.Context, uri string) error {
-	params := struct {
-		URI string `json:"uri"`
-	}{
-		URI: uri,
-	}
-
-	_, err := c.sendRequest(ctx, "resources/unsubscribe", params)
+func (c *StdioMCPClient) Unsubscribe(
+	ctx context.Context,
+	request mcp.UnsubscribeRequest,
+) error {
+	_, err := c.sendRequest(ctx, "resources/unsubscribe", request.Params)
 	return err
 }
 
 func (c *StdioMCPClient) ListPrompts(
 	ctx context.Context,
-	cursor *string,
+	request mcp.ListPromptsRequest,
 ) (*mcp.ListPromptsResult, error) {
-	params := struct {
-		Cursor *string `json:"cursor,omitempty"`
-	}{
-		Cursor: cursor,
-	}
-
-	response, err := c.sendRequest(ctx, "prompts/list", params)
+	response, err := c.sendRequest(ctx, "prompts/list", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -290,18 +325,9 @@ func (c *StdioMCPClient) ListPrompts(
 
 func (c *StdioMCPClient) GetPrompt(
 	ctx context.Context,
-	name string,
-	arguments map[string]string,
+	request mcp.GetPromptRequest,
 ) (*mcp.GetPromptResult, error) {
-	params := struct {
-		Name      string            `json:"name"`
-		Arguments map[string]string `json:"arguments,omitempty"`
-	}{
-		Name:      name,
-		Arguments: arguments,
-	}
-
-	response, err := c.sendRequest(ctx, "prompts/get", params)
+	response, err := c.sendRequest(ctx, "prompts/get", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -316,15 +342,9 @@ func (c *StdioMCPClient) GetPrompt(
 
 func (c *StdioMCPClient) ListTools(
 	ctx context.Context,
-	cursor *string,
+	request mcp.ListToolsRequest,
 ) (*mcp.ListToolsResult, error) {
-	params := struct {
-		Cursor *string `json:"cursor,omitempty"`
-	}{
-		Cursor: cursor,
-	}
-
-	response, err := c.sendRequest(ctx, "tools/list", params)
+	response, err := c.sendRequest(ctx, "tools/list", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -339,18 +359,9 @@ func (c *StdioMCPClient) ListTools(
 
 func (c *StdioMCPClient) CallTool(
 	ctx context.Context,
-	name string,
-	arguments map[string]interface{},
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	params := struct {
-		Name      string                 `json:"name"`
-		Arguments map[string]interface{} `json:"arguments,omitempty"`
-	}{
-		Name:      name,
-		Arguments: arguments,
-	}
-
-	response, err := c.sendRequest(ctx, "tools/call", params)
+	response, err := c.sendRequest(ctx, "tools/call", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -365,32 +376,17 @@ func (c *StdioMCPClient) CallTool(
 
 func (c *StdioMCPClient) SetLevel(
 	ctx context.Context,
-	level mcp.LoggingLevel,
+	request mcp.SetLevelRequest,
 ) error {
-	params := struct {
-		Level mcp.LoggingLevel `json:"level"`
-	}{
-		Level: level,
-	}
-
-	_, err := c.sendRequest(ctx, "logging/setLevel", params)
+	_, err := c.sendRequest(ctx, "logging/setLevel", request.Params)
 	return err
 }
 
 func (c *StdioMCPClient) Complete(
 	ctx context.Context,
-	ref interface{},
-	argument mcp.CompleteRequestParamsArgument,
+	request mcp.CompleteRequest,
 ) (*mcp.CompleteResult, error) {
-	params := struct {
-		Ref      interface{}                       `json:"ref"`
-		Argument mcp.CompleteRequestParamsArgument `json:"argument"`
-	}{
-		Ref:      ref,
-		Argument: argument,
-	}
-
-	response, err := c.sendRequest(ctx, "completion/complete", params)
+	response, err := c.sendRequest(ctx, "completion/complete", request.Params)
 	if err != nil {
 		return nil, err
 	}

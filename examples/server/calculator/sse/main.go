@@ -3,17 +3,22 @@ package main
 import (
 	"log"
 
-	example "github.com/mark3labs/mcp-go/examples/server/calculator"
+	"github.com/mark3labs/mcp-go/examples/server/calculator"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 func main() {
 	// Create MCP server
-	mcpServer := server.NewDefaultServer("calculator", "1.0.0")
+	mcpServer := server.NewMCPServer(
+		"calculator",
+		"1.0.0",
+		server.WithToolCapabilities(true),
+	)
 
-	// Register handlers
-	mcpServer.HandleCallTool(example.HandleToolCall)
-	mcpServer.HandleListTools(example.HandleListTools)
+	// Add calculator tools
+	for _, tool := range calculator.Tools {
+		mcpServer.AddTool(tool, calculator.Handlers[tool.Name])
+	}
 
 	// Create and start SSE server
 	sseServer := server.NewSSEServer(mcpServer, "http://localhost:3001")

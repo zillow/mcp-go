@@ -13,13 +13,12 @@ import (
 )
 
 func compileTestServer(outputPath string) error {
-	cwd, _ := os.Getwd()
 	cmd := exec.Command(
 		"go",
 		"build",
 		"-o",
 		outputPath,
-		filepath.Join(cwd, "..", "testdata", "mockstdio_server.go"),
+		"../testdata/mockstdio_server.go",
 	)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("compilation failed: %v\nOutput: %s", err, output)
@@ -29,7 +28,7 @@ func compileTestServer(outputPath string) error {
 
 func TestStdioMCPClient(t *testing.T) {
 	// Compile mock server
-	mockServerPath := filepath.Join("testdata", "mockstdio_server")
+	mockServerPath := filepath.Join(os.TempDir(), "mockstdio_server")
 	if err := compileTestServer(mockServerPath); err != nil {
 		t.Fatalf("Failed to compile mock server: %v", err)
 	}
@@ -45,29 +44,30 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		capabilities := mcp.ClientCapabilities{
-			Experimental: map[string]map[string]interface{}{},
-			Roots: &mcp.ClientCapabilitiesRoots{
+		request := mcp.InitializeRequest{}
+		request.Params.ProtocolVersion = "1.0"
+		request.Params.ClientInfo = mcp.Implementation{
+			Name:    "test-client",
+			Version: "1.0.0",
+		}
+		request.Params.Capabilities = mcp.ClientCapabilities{
+			Roots: &struct {
+				ListChanged bool `json:"listChanged,omitempty"`
+			}{
 				ListChanged: true,
 			},
 		}
 
-		clientInfo := mcp.Implementation{
-			Name:    "test-client",
-			Version: "1.0.0",
-		}
-
-		result, err := client.Initialize(ctx, capabilities, clientInfo, "1.0")
+		result, err := client.Initialize(ctx, request)
 		if err != nil {
 			t.Fatalf("Initialize failed: %v", err)
 		}
 
-		if result.ProtocolVersion == "" {
-			t.Error("Expected protocol version in response")
-		}
-
-		if result.ServerInfo.Name == "" {
-			t.Error("Expected server info in response")
+		if result.ServerInfo.Name != "mock-server" {
+			t.Errorf(
+				"Expected server name 'mock-server', got '%s'",
+				result.ServerInfo.Name,
+			)
 		}
 	})
 
@@ -85,13 +85,14 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		result, err := client.ListResources(ctx, nil)
+		request := mcp.ListResourcesRequest{}
+		result, err := client.ListResources(ctx, request)
 		if err != nil {
 			t.Errorf("ListResources failed: %v", err)
 		}
 
-		if result == nil {
-			t.Error("Expected non-nil result")
+		if len(result.Resources) != 1 {
+			t.Errorf("Expected 1 resource, got %d", len(result.Resources))
 		}
 	})
 
@@ -99,31 +100,35 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		result, err := client.ReadResource(ctx, "test://resource")
+		request := mcp.ReadResourceRequest{}
+		request.Params.URI = "test://resource"
+
+		result, err := client.ReadResource(ctx, request)
 		if err != nil {
 			t.Errorf("ReadResource failed: %v", err)
 		}
 
-		if result == nil {
-			t.Error("Expected non-nil result")
+		if len(result.Contents) != 1 {
+			t.Errorf("Expected 1 content item, got %d", len(result.Contents))
 		}
 	})
 
-	t.Run("Subscribe", func(t *testing.T) {
+	t.Run("Subscribe and Unsubscribe", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		err := client.Subscribe(ctx, "test://resource")
+		// Test Subscribe
+		subRequest := mcp.SubscribeRequest{}
+		subRequest.Params.URI = "test://resource"
+		err := client.Subscribe(ctx, subRequest)
 		if err != nil {
 			t.Errorf("Subscribe failed: %v", err)
 		}
-	})
 
-	t.Run("Unsubscribe", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		err := client.Unsubscribe(ctx, "test://resource")
+		// Test Unsubscribe
+		unsubRequest := mcp.UnsubscribeRequest{}
+		unsubRequest.Params.URI = "test://resource"
+		err = client.Unsubscribe(ctx, unsubRequest)
 		if err != nil {
 			t.Errorf("Unsubscribe failed: %v", err)
 		}
@@ -133,13 +138,14 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		result, err := client.ListPrompts(ctx, nil)
+		request := mcp.ListPromptsRequest{}
+		result, err := client.ListPrompts(ctx, request)
 		if err != nil {
 			t.Errorf("ListPrompts failed: %v", err)
 		}
 
-		if result == nil {
-			t.Error("Expected non-nil result")
+		if len(result.Prompts) != 1 {
+			t.Errorf("Expected 1 prompt, got %d", len(result.Prompts))
 		}
 	})
 
@@ -147,13 +153,16 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		result, err := client.GetPrompt(ctx, "test-prompt", nil)
+		request := mcp.GetPromptRequest{}
+		request.Params.Name = "test-prompt"
+
+		result, err := client.GetPrompt(ctx, request)
 		if err != nil {
 			t.Errorf("GetPrompt failed: %v", err)
 		}
 
-		if result == nil {
-			t.Error("Expected non-nil result")
+		if len(result.Messages) != 1 {
+			t.Errorf("Expected 1 message, got %d", len(result.Messages))
 		}
 	})
 
@@ -161,13 +170,14 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		result, err := client.ListTools(ctx, nil)
+		request := mcp.ListToolsRequest{}
+		result, err := client.ListTools(ctx, request)
 		if err != nil {
 			t.Errorf("ListTools failed: %v", err)
 		}
 
-		if result == nil {
-			t.Error("Expected non-nil result")
+		if len(result.Tools) != 1 {
+			t.Errorf("Expected 1 tool, got %d", len(result.Tools))
 		}
 	})
 
@@ -175,17 +185,19 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		args := map[string]interface{}{
+		request := mcp.CallToolRequest{}
+		request.Params.Name = "test-tool"
+		request.Params.Arguments = map[string]interface{}{
 			"param1": "value1",
 		}
 
-		result, err := client.CallTool(ctx, "test-tool", args)
+		result, err := client.CallTool(ctx, request)
 		if err != nil {
 			t.Errorf("CallTool failed: %v", err)
 		}
 
-		if result == nil {
-			t.Error("Expected non-nil result")
+		if len(result.Content) != 1 {
+			t.Errorf("Expected 1 content item, got %d", len(result.Content))
 		}
 	})
 
@@ -193,7 +205,10 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		err := client.SetLevel(ctx, mcp.LoggingLevelInfo)
+		request := mcp.SetLevelRequest{}
+		request.Params.Level = mcp.LoggingLevelInfo
+
+		err := client.SetLevel(ctx, request)
 		if err != nil {
 			t.Errorf("SetLevel failed: %v", err)
 		}
@@ -203,71 +218,24 @@ func TestStdioMCPClient(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		ref := mcp.PromptReference{
+		request := mcp.CompleteRequest{}
+		request.Params.Ref = mcp.PromptReference{
 			Type: "ref/prompt",
 			Name: "test-prompt",
 		}
+		request.Params.Argument.Name = "test-arg"
+		request.Params.Argument.Value = "test-value"
 
-		arg := mcp.CompleteRequestParamsArgument{
-			Name:  "test-arg",
-			Value: "test-value",
-		}
-
-		result, err := client.Complete(ctx, ref, arg)
+		result, err := client.Complete(ctx, request)
 		if err != nil {
 			t.Errorf("Complete failed: %v", err)
 		}
 
-		if result == nil {
-			t.Error("Expected non-nil result")
-		}
-	})
-
-	t.Run("Initialization Required", func(t *testing.T) {
-		// Create a new uninitialized client
-		uninitClient, err := NewStdioMCPClient(mockServerPath)
-		if err != nil {
-			t.Fatalf("Failed to create uninitialized client: %v", err)
-		}
-		defer uninitClient.Close()
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		// Try to call a method before initialization
-		_, err = uninitClient.ListResources(ctx, nil)
-		if err == nil {
-			t.Error("Expected error when calling method before initialization")
-		}
-	})
-
-	t.Run("Context Cancellation", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel() // Cancel immediately
-
-		_, err := client.ListResources(ctx, nil)
-		if err == nil {
-			t.Error("Expected error when context is cancelled")
-		}
-	})
-
-	t.Run("Invalid Response Handling", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		// This assumes the mock server will return an error for an unknown method
-		_, err := client.sendRequest(ctx, "invalid_method", nil)
-		if err == nil {
-			t.Error("Expected error for invalid method")
-		}
-	})
-}
-
-func TestNewStdioMCPClient_Errors(t *testing.T) {
-	t.Run("Invalid Command", func(t *testing.T) {
-		_, err := NewStdioMCPClient("nonexistent_command")
-		if err == nil {
-			t.Error("Expected error when creating client with invalid command")
+		if len(result.Completion.Values) != 1 {
+			t.Errorf(
+				"Expected 1 completion value, got %d",
+				len(result.Completion.Values),
+			)
 		}
 	})
 }

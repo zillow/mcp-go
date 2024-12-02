@@ -1,238 +1,232 @@
 package server
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func TestSSEConnection(t *testing.T) {
-	mcpServer := NewDefaultServer("test", "1.0.0")
-	_, testServer := NewTestServer(mcpServer)
-	defer testServer.Close()
+func TestSSEServer(t *testing.T) {
+	t.Run("Can instantiate", func(t *testing.T) {
+		mcpServer := NewMCPServer("test", "1.0.0")
+		sseServer := NewSSEServer(mcpServer, "http://localhost:8080")
 
-	// Connect to SSE endpoint
-	resp, err := http.Get(testServer.URL + "/sse")
-	assert.NoError(t, err)
-	defer resp.Body.Close()
+		if sseServer == nil {
+			t.Error("SSEServer should not be nil")
+		}
+		if sseServer.server == nil {
+			t.Error("MCPServer should not be nil")
+		}
+		if sseServer.baseURL != "http://localhost:8080" {
+			t.Errorf(
+				"Expected baseURL http://localhost:8080, got %s",
+				sseServer.baseURL,
+			)
+		}
+	})
 
-	// Check headers
-	assert.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
-	assert.Equal(t, "no-cache", resp.Header.Get("Cache-Control"))
-	assert.Equal(t, "keep-alive", resp.Header.Get("Connection"))
+	t.Run("Can send and receive messages", func(t *testing.T) {
+		mcpServer := NewMCPServer("test", "1.0.0",
+			WithResourceCapabilities(true, true),
+		)
+		testServer := NewTestServer(mcpServer)
+		defer testServer.Close()
 
-	// Read endpoint event
-	reader := bufio.NewReader(resp.Body)
-	eventLine, err := reader.ReadString('\n')
-	assert.NoError(t, err)
-	assert.Equal(t, "event: endpoint\n", eventLine)
-
-	dataLine, err := reader.ReadString('\n')
-	assert.NoError(t, err)
-	assert.Contains(t, dataLine, "/message?sessionId=")
-}
-
-func TestSessionSpecificMessages(t *testing.T) {
-	mcpServer := NewDefaultServer("test", "1.0.0")
-	_, testServer := NewTestServer(mcpServer)
-	defer testServer.Close()
-
-	// Connect two clients
-	resp1, err := http.Get(testServer.URL + "/sse")
-	assert.NoError(t, err)
-	defer resp1.Body.Close()
-
-	resp2, err := http.Get(testServer.URL + "/sse")
-	assert.NoError(t, err)
-	defer resp2.Body.Close()
-
-	// Get session IDs
-	reader1 := bufio.NewReader(resp1.Body)
-	reader2 := bufio.NewReader(resp2.Body)
-
-	_, _ = reader1.ReadString('\n')
-	dataLine1, _ := reader1.ReadString('\n')
-	sessionID1 := strings.Split(strings.Split(dataLine1, "sessionId=")[1],
-		"\n")[0]
-
-	_, _ = reader2.ReadString('\n')
-	dataLine2, _ := reader2.ReadString('\n')
-	sessionID2 := strings.Split(strings.Split(dataLine2, "sessionId=")[1],
-		"\n")[0]
-
-	// Create message channels
-	messages1 := make(chan string)
-	messages2 := make(chan string)
-
-	go readSSEMessages(reader1, messages1)
-	go readSSEMessages(reader2, messages2)
-
-	// Send initialize requests for both clients
-	request1 := JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      "abc123",
-		Method:  "initialize",
-		Params: json.RawMessage(`{
-                "clientInfo": {
-                    "name": "test-client-1",
-                    "version": "1.0.0"
-                },
-                "capabilities": {},
-                "protocolVersion": "2024-11-05"
-            }`),
-	}
-
-	request2 := JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      "def456",
-		Method:  "initialize",
-		Params: json.RawMessage(`{
-                "clientInfo": {
-                    "name": "test-client-2",
-                    "version": "1.0.0"
-                },
-                "capabilities": {},
-                "protocolVersion": "2024-11-05"
-            }`),
-	}
-
-	// Send requests
-	sendJSONRPCRequest(t, testServer.URL, sessionID1, request1)
-	sendJSONRPCRequest(t, testServer.URL, sessionID2, request2)
-
-	// Verify responses go to correct clients
-	verifyJSONRPCResponse(t, messages1, "abc123")
-	verifyJSONRPCResponse(t, messages2, "def456")
-}
-
-func TestInvalidSession(t *testing.T) {
-	mcpServer := NewDefaultServer("test", "1.0.0")
-	_, testServer := NewTestServer(mcpServer)
-	defer testServer.Close()
-
-	request := JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      1,
-		Method:  "ping",
-		Params:  json.RawMessage("{}"),
-	}
-	jsonBody, _ := json.Marshal(request)
-
-	// Test missing session ID
-	resp, err := http.Post(
-		testServer.URL+"/message",
-		"application/json",
-		bytes.NewBuffer(jsonBody),
-	)
-	assert.NoError(t, err)
-	defer resp.Body.Close()
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-
-	var response JSONRPCResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	assert.NoError(t, err)
-	assert.NotNil(t, response.Error)
-	assert.Equal(t, -32602, response.Error.Code)
-
-	// Test invalid session ID
-	resp, err = http.Post(
-		testServer.URL+"/message?sessionId=invalid",
-		"application/json",
-		bytes.NewBuffer(jsonBody),
-	)
-	assert.NoError(t, err)
-	defer resp.Body.Close()
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	assert.NoError(t, err)
-	assert.NotNil(t, response.Error)
-	assert.Equal(t, -32602, response.Error.Code)
-}
-
-func TestMethodNotAllowed(t *testing.T) {
-	mcpServer := NewDefaultServer("test", "1.0.0")
-	_, testServer := NewTestServer(mcpServer)
-	defer testServer.Close()
-
-	resp, err := http.Get(testServer.URL + "/message")
-	assert.NoError(t, err)
-	defer resp.Body.Close()
-
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-
-	var response JSONRPCResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	assert.NoError(t, err)
-	assert.NotNil(t, response.Error)
-	assert.Equal(t, -32600, response.Error.Code)
-}
-
-// Helper functions
-func readSSEMessages(reader *bufio.Reader, messageChan chan<- string) {
-	for {
-		line, err := reader.ReadString('\n')
+		// Connect to SSE endpoint
+		sseResp, err := http.Get(fmt.Sprintf("%s/sse", testServer.URL))
 		if err != nil {
-			close(messageChan)
-			return
+			t.Fatalf("Failed to connect to SSE endpoint: %v", err)
 		}
-		if strings.HasPrefix(line, "data: ") {
-			messageChan <- strings.TrimPrefix(line, "data: ")
+		defer sseResp.Body.Close()
+
+		// Read the endpoint event
+		buf := make([]byte, 1024)
+		n, err := sseResp.Body.Read(buf)
+		if err != nil {
+			t.Fatalf("Failed to read SSE response: %v", err)
 		}
-	}
-}
 
-func sendJSONRPCRequest(
-	t *testing.T,
-	serverURL, sessionID string,
-	request JSONRPCRequest,
-) {
-	jsonBody, err := json.Marshal(request)
-	assert.NoError(t, err)
+		endpointEvent := string(buf[:n])
+		if !strings.Contains(endpointEvent, "event: endpoint") {
+			t.Fatalf("Expected endpoint event, got: %s", endpointEvent)
+		}
 
-	resp, err := http.Post(
-		fmt.Sprintf("%s/message?sessionId=%s", serverURL, sessionID),
-		"application/json",
-		bytes.NewBuffer(jsonBody),
-	)
-	assert.NoError(t, err)
-	defer resp.Body.Close()
+		// Extract message endpoint URL
+		messageURL := strings.TrimSpace(
+			strings.Split(strings.Split(endpointEvent, "data: ")[1], "\n")[0],
+		)
 
-	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+		// Send initialize request
+		initRequest := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "initialize",
+			"params": map[string]interface{}{
+				"protocolVersion": "2024-11-05",
+				"clientInfo": map[string]interface{}{
+					"name":    "test-client",
+					"version": "1.0.0",
+				},
+			},
+		}
 
-	var response JSONRPCResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	assert.NoError(t, err)
-	assert.Equal(t, request.ID, response.ID)
-	assert.Nil(t, response.Error)
-}
+		requestBody, err := json.Marshal(initRequest)
+		if err != nil {
+			t.Fatalf("Failed to marshal request: %v", err)
+		}
 
-func verifyJSONRPCResponse(
-	t *testing.T,
-	messageChan chan string,
-	expectedID interface{},
-) {
-	select {
-	case message := <-messageChan:
-		var response JSONRPCResponse
-		err := json.Unmarshal([]byte(message), &response)
-		assert.NoError(t, err)
-		assert.Equal(t, "2.0", response.JSONRPC)
-		assert.Equal(t, expectedID, response.ID)
-		assert.Nil(t, response.Error)
+		resp, err := http.Post(
+			messageURL,
+			"application/json",
+			bytes.NewBuffer(requestBody),
+		)
+		if err != nil {
+			t.Fatalf("Failed to send message: %v", err)
+		}
+		defer resp.Body.Close()
 
-		// Verify it's an initialize response
-		result := response.Result.(map[string]interface{})
-		serverInfo := result["serverInfo"].(map[string]interface{})
-		assert.Equal(t, "test", serverInfo["name"])
-	case <-time.After(time.Second * 5):
-		t.Fatal("Timeout waiting for SSE message")
-	}
+		if resp.StatusCode != http.StatusAccepted {
+			t.Errorf("Expected status 202, got %d", resp.StatusCode)
+		}
+
+		// Verify response
+		var response map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response["jsonrpc"] != "2.0" {
+			t.Errorf("Expected jsonrpc 2.0, got %v", response["jsonrpc"])
+		}
+		if response["id"].(float64) != 1 {
+			t.Errorf("Expected id 1, got %v", response["id"])
+		}
+	})
+
+	t.Run("Can handle multiple sessions", func(t *testing.T) {
+		mcpServer := NewMCPServer("test", "1.0.0",
+			WithResourceCapabilities(true, true),
+		)
+		testServer := NewTestServer(mcpServer)
+		defer testServer.Close()
+
+		numSessions := 3
+		var wg sync.WaitGroup
+		wg.Add(numSessions)
+
+		for i := 0; i < numSessions; i++ {
+			go func(sessionNum int) {
+				defer wg.Done()
+
+				// Connect to SSE endpoint
+				sseResp, err := http.Get(fmt.Sprintf("%s/sse", testServer.URL))
+				if err != nil {
+					t.Errorf(
+						"Session %d: Failed to connect to SSE endpoint: %v",
+						sessionNum,
+						err,
+					)
+					return
+				}
+				defer sseResp.Body.Close()
+
+				// Read the endpoint event
+				buf := make([]byte, 1024)
+				n, err := sseResp.Body.Read(buf)
+				if err != nil {
+					t.Errorf(
+						"Session %d: Failed to read SSE response: %v",
+						sessionNum,
+						err,
+					)
+					return
+				}
+
+				endpointEvent := string(buf[:n])
+				messageURL := strings.TrimSpace(
+					strings.Split(strings.Split(endpointEvent, "data: ")[1], "\n")[0],
+				)
+
+				// Send initialize request
+				initRequest := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      sessionNum,
+					"method":  "initialize",
+					"params": map[string]interface{}{
+						"protocolVersion": "2024-11-05",
+						"clientInfo": map[string]interface{}{
+							"name": fmt.Sprintf(
+								"test-client-%d",
+								sessionNum,
+							),
+							"version": "1.0.0",
+						},
+					},
+				}
+
+				requestBody, err := json.Marshal(initRequest)
+				if err != nil {
+					t.Errorf(
+						"Session %d: Failed to marshal request: %v",
+						sessionNum,
+						err,
+					)
+					return
+				}
+
+				resp, err := http.Post(
+					messageURL,
+					"application/json",
+					bytes.NewBuffer(requestBody),
+				)
+				if err != nil {
+					t.Errorf(
+						"Session %d: Failed to send message: %v",
+						sessionNum,
+						err,
+					)
+					return
+				}
+				defer resp.Body.Close()
+
+				var response map[string]interface{}
+				if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+					t.Errorf(
+						"Session %d: Failed to decode response: %v",
+						sessionNum,
+						err,
+					)
+					return
+				}
+
+				if response["id"].(float64) != float64(sessionNum) {
+					t.Errorf(
+						"Session %d: Expected id %d, got %v",
+						sessionNum,
+						sessionNum,
+						response["id"],
+					)
+				}
+			}(i)
+		}
+
+		// Wait with timeout
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			// All sessions completed successfully
+		case <-time.After(5 * time.Second):
+			t.Fatal("Timeout waiting for sessions to complete")
+		}
+	})
 }

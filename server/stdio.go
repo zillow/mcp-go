@@ -10,18 +10,20 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // StdioServer wraps a MCPServer and handles stdio communication
 type StdioServer struct {
-	server    MCPServer
+	server    *MCPServer
 	sigChan   chan os.Signal
 	errLogger *log.Logger
 	done      chan struct{}
 }
 
 // ServeStdio creates a stdio server wrapper around an existing MCPServer
-func ServeStdio(server MCPServer) error {
+func ServeStdio(server *MCPServer) error {
 	s := &StdioServer{
 		server:    server,
 		sigChan:   make(chan os.Signal, 1),
@@ -94,34 +96,27 @@ func (s *StdioServer) serve() error {
 }
 
 func (s *StdioServer) handleMessage(ctx context.Context, line string) error {
-	// Parse the JSON-RPC request
-	var request JSONRPCRequest
-	if err := json.Unmarshal([]byte(line), &request); err != nil {
-		s.writeResponse(JSONRPCResponse{
-			JSONRPC: "2.0",
-			Error: &struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-			}{
-				Code:    -32700,
-				Message: "Parse error",
-			},
-		})
-		return fmt.Errorf("failed to parse JSON-RPC request: %w", err)
+	// Parse the message as raw JSON
+	var rawMessage json.RawMessage
+	if err := json.Unmarshal([]byte(line), &rawMessage); err != nil {
+		response := createErrorResponse(nil, mcp.PARSE_ERROR, "Parse error")
+		return s.writeResponse(response)
 	}
 
-	// Handle the request using the wrapped server
-	response := s.server.Request(ctx, request)
+	// Handle the message using the wrapped server
+	response := s.server.HandleMessage(ctx, rawMessage)
 
-	// Send the response
-	if err := s.writeResponse(response); err != nil {
-		return fmt.Errorf("failed to write response: %w", err)
+	// Send the response if there is one (notifications don't have responses)
+	if response != nil {
+		if err := s.writeResponse(response); err != nil {
+			return fmt.Errorf("failed to write response: %w", err)
+		}
 	}
 
 	return nil
 }
 
-func (s *StdioServer) writeResponse(response JSONRPCResponse) error {
+func (s *StdioServer) writeResponse(response mcp.JSONRPCMessage) error {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		return err

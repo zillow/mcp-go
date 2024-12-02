@@ -12,19 +12,23 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 type SSEMCPClient struct {
-	baseURL     *url.URL
-	endpoint    *url.URL
-	httpClient  *http.Client
-	requestID   atomic.Int64
-	responses   map[int64]chan *json.RawMessage
-	mu          sync.RWMutex
-	done        chan struct{}
-	initialized bool
+	baseURL       *url.URL
+	endpoint      *url.URL
+	httpClient    *http.Client
+	requestID     atomic.Int64
+	responses     map[int64]chan *json.RawMessage
+	mu            sync.RWMutex
+	done          chan struct{}
+	initialized   bool
+	notifications []func(mcp.JSONRPCNotification)
+	notifyMu      sync.RWMutex
+	endpointChan  chan struct{}
 }
 
 func NewSSEMCPClient(baseURL string) (*SSEMCPClient, error) {
@@ -34,17 +38,22 @@ func NewSSEMCPClient(baseURL string) (*SSEMCPClient, error) {
 	}
 
 	return &SSEMCPClient{
-		baseURL:    parsedURL,
-		httpClient: &http.Client{},
-		responses:  make(map[int64]chan *json.RawMessage),
-		done:       make(chan struct{}),
+		baseURL:      parsedURL,
+		httpClient:   &http.Client{},
+		responses:    make(map[int64]chan *json.RawMessage),
+		done:         make(chan struct{}),
+		endpointChan: make(chan struct{}),
 	}, nil
 }
 
 func (c *SSEMCPClient) Start(ctx context.Context) error {
+
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL.String(), nil)
+
 	if err != nil {
+
 		return fmt.Errorf("failed to create request: %w", err)
+
 	}
 
 	req.Header.Set("Accept", "text/event-stream")
@@ -62,6 +71,18 @@ func (c *SSEMCPClient) Start(ctx context.Context) error {
 	}
 
 	go c.readSSE(resp.Body)
+
+	// Wait for the endpoint to be received
+
+	select {
+	case <-c.endpointChan:
+		// Endpoint received, proceed
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled while waiting for endpoint")
+	case <-time.After(30 * time.Second): // Add a timeout
+		return fmt.Errorf("timeout waiting for endpoint")
+	}
+
 	return nil
 }
 
@@ -94,7 +115,6 @@ func (c *SSEMCPClient) readSSE(reader io.ReadCloser) {
 	if err := scanner.Err(); err != nil {
 		select {
 		case <-c.done:
-			// Client is closing, ignore error
 			return
 		default:
 			fmt.Printf("SSE stream error: %v\n", err)
@@ -115,37 +135,62 @@ func (c *SSEMCPClient) handleSSEEvent(event, data string) {
 			return
 		}
 		c.endpoint = endpoint
+		close(c.endpointChan)
 
 	case "message":
-		var response struct {
-			ID     int64           `json:"id"`
-			Result json.RawMessage `json:"result,omitempty"`
-			Error  *struct {
+		var baseMessage struct {
+			JSONRPC string          `json:"jsonrpc"`
+			ID      *int64          `json:"id,omitempty"`
+			Method  string          `json:"method,omitempty"`
+			Result  json.RawMessage `json:"result,omitempty"`
+			Error   *struct {
 				Code    int    `json:"code"`
 				Message string `json:"message"`
 			} `json:"error,omitempty"`
 		}
 
-		if err := json.Unmarshal([]byte(data), &response); err != nil {
-			fmt.Printf("Error unmarshaling response: %v\n", err)
+		if err := json.Unmarshal([]byte(data), &baseMessage); err != nil {
+			fmt.Printf("Error unmarshaling message: %v\n", err)
+			return
+		}
+
+		// Handle notification
+		if baseMessage.ID == nil {
+			var notification mcp.JSONRPCNotification
+			if err := json.Unmarshal([]byte(data), &notification); err != nil {
+				return
+			}
+			c.notifyMu.RLock()
+			for _, handler := range c.notifications {
+				handler(notification)
+			}
+			c.notifyMu.RUnlock()
 			return
 		}
 
 		c.mu.RLock()
-		ch, ok := c.responses[response.ID]
+		ch, ok := c.responses[*baseMessage.ID]
 		c.mu.RUnlock()
 
 		if ok {
-			if response.Error != nil {
+			if baseMessage.Error != nil {
 				ch <- nil // Signal error condition
 			} else {
-				ch <- &response.Result
+				ch <- &baseMessage.Result
 			}
 			c.mu.Lock()
-			delete(c.responses, response.ID)
+			delete(c.responses, *baseMessage.ID)
 			c.mu.Unlock()
 		}
 	}
+}
+
+func (c *SSEMCPClient) OnNotification(
+	handler func(notification mcp.JSONRPCNotification),
+) {
+	c.notifyMu.Lock()
+	defer c.notifyMu.Unlock()
+	c.notifications = append(c.notifications, handler)
 }
 
 func (c *SSEMCPClient) sendRequest(
@@ -163,27 +208,33 @@ func (c *SSEMCPClient) sendRequest(
 
 	id := c.requestID.Add(1)
 
-	request := struct {
-		JSONRPC string      `json:"jsonrpc"`
-		ID      int64       `json:"id"`
-		Method  string      `json:"method"`
-		Params  interface{} `json:"params,omitempty"`
-	}{
-		JSONRPC: "2.0",
+	request := mcp.JSONRPCRequest{
+		JSONRPC: mcp.JSONRPC_VERSION,
 		ID:      id,
-		Method:  method,
-		Params:  params,
+		Request: mcp.Request{
+			Method: method,
+		},
+	}
+
+	if params != nil {
+		paramsBytes, err := json.Marshal(params)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal params: %w", err)
+		}
+		if err := json.Unmarshal(paramsBytes, &request.Params); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal params: %w", err)
+		}
+	}
+
+	requestBytes, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	responseChan := make(chan *json.RawMessage, 1)
 	c.mu.Lock()
 	c.responses[id] = responseChan
 	c.mu.Unlock()
-
-	requestBytes, err := json.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
 
 	req, err := http.NewRequestWithContext(
 		ctx,
@@ -203,7 +254,6 @@ func (c *SSEMCPClient) sendRequest(
 	}
 	defer resp.Body.Close()
 
-	// Accept both 200 OK and 202 Accepted as valid responses
 	if resp.StatusCode != http.StatusOK &&
 		resp.StatusCode != http.StatusAccepted {
 		body, _ := io.ReadAll(resp.Body)
@@ -230,21 +280,9 @@ func (c *SSEMCPClient) sendRequest(
 
 func (c *SSEMCPClient) Initialize(
 	ctx context.Context,
-	capabilities mcp.ClientCapabilities,
-	clientInfo mcp.Implementation,
-	protocolVersion string,
+	request mcp.InitializeRequest,
 ) (*mcp.InitializeResult, error) {
-	params := struct {
-		Capabilities    mcp.ClientCapabilities `json:"capabilities"`
-		ClientInfo      mcp.Implementation     `json:"clientInfo"`
-		ProtocolVersion string                 `json:"protocolVersion"`
-	}{
-		Capabilities:    capabilities,
-		ClientInfo:      clientInfo,
-		ProtocolVersion: protocolVersion,
-	}
-
-	response, err := c.sendRequest(ctx, "initialize", params)
+	response, err := c.sendRequest(ctx, "initialize", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -265,15 +303,9 @@ func (c *SSEMCPClient) Ping(ctx context.Context) error {
 
 func (c *SSEMCPClient) ListResources(
 	ctx context.Context,
-	cursor *string,
+	request mcp.ListResourcesRequest,
 ) (*mcp.ListResourcesResult, error) {
-	params := struct {
-		Cursor *string `json:"cursor,omitempty"`
-	}{
-		Cursor: cursor,
-	}
-
-	response, err := c.sendRequest(ctx, "resources/list", params)
+	response, err := c.sendRequest(ctx, "resources/list", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -286,17 +318,32 @@ func (c *SSEMCPClient) ListResources(
 	return &result, nil
 }
 
-func (c *SSEMCPClient) ReadResource(
+func (c *SSEMCPClient) ListResourceTemplates(
 	ctx context.Context,
-	uri string,
-) (*mcp.ReadResourceResult, error) {
-	params := struct {
-		URI string `json:"uri"`
-	}{
-		URI: uri,
+	request mcp.ListResourceTemplatesRequest,
+) (*mcp.ListResourceTemplatesResult, error) {
+	response, err := c.sendRequest(
+		ctx,
+		"resources/templates/list",
+		request.Params,
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	response, err := c.sendRequest(ctx, "resources/read", params)
+	var result mcp.ListResourceTemplatesResult
+	if err := json.Unmarshal(*response, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return &result, nil
+}
+
+func (c *SSEMCPClient) ReadResource(
+	ctx context.Context,
+	request mcp.ReadResourceRequest,
+) (*mcp.ReadResourceResult, error) {
+	response, err := c.sendRequest(ctx, "resources/read", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -309,39 +356,27 @@ func (c *SSEMCPClient) ReadResource(
 	return &result, nil
 }
 
-func (c *SSEMCPClient) Subscribe(ctx context.Context, uri string) error {
-	params := struct {
-		URI string `json:"uri"`
-	}{
-		URI: uri,
-	}
-
-	_, err := c.sendRequest(ctx, "resources/subscribe", params)
+func (c *SSEMCPClient) Subscribe(
+	ctx context.Context,
+	request mcp.SubscribeRequest,
+) error {
+	_, err := c.sendRequest(ctx, "resources/subscribe", request.Params)
 	return err
 }
 
-func (c *SSEMCPClient) Unsubscribe(ctx context.Context, uri string) error {
-	params := struct {
-		URI string `json:"uri"`
-	}{
-		URI: uri,
-	}
-
-	_, err := c.sendRequest(ctx, "resources/unsubscribe", params)
+func (c *SSEMCPClient) Unsubscribe(
+	ctx context.Context,
+	request mcp.UnsubscribeRequest,
+) error {
+	_, err := c.sendRequest(ctx, "resources/unsubscribe", request.Params)
 	return err
 }
 
 func (c *SSEMCPClient) ListPrompts(
 	ctx context.Context,
-	cursor *string,
+	request mcp.ListPromptsRequest,
 ) (*mcp.ListPromptsResult, error) {
-	params := struct {
-		Cursor *string `json:"cursor,omitempty"`
-	}{
-		Cursor: cursor,
-	}
-
-	response, err := c.sendRequest(ctx, "prompts/list", params)
+	response, err := c.sendRequest(ctx, "prompts/list", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -356,18 +391,9 @@ func (c *SSEMCPClient) ListPrompts(
 
 func (c *SSEMCPClient) GetPrompt(
 	ctx context.Context,
-	name string,
-	arguments map[string]string,
+	request mcp.GetPromptRequest,
 ) (*mcp.GetPromptResult, error) {
-	params := struct {
-		Name      string            `json:"name"`
-		Arguments map[string]string `json:"arguments,omitempty"`
-	}{
-		Name:      name,
-		Arguments: arguments,
-	}
-
-	response, err := c.sendRequest(ctx, "prompts/get", params)
+	response, err := c.sendRequest(ctx, "prompts/get", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -382,15 +408,9 @@ func (c *SSEMCPClient) GetPrompt(
 
 func (c *SSEMCPClient) ListTools(
 	ctx context.Context,
-	cursor *string,
+	request mcp.ListToolsRequest,
 ) (*mcp.ListToolsResult, error) {
-	params := struct {
-		Cursor *string `json:"cursor,omitempty"`
-	}{
-		Cursor: cursor,
-	}
-
-	response, err := c.sendRequest(ctx, "tools/list", params)
+	response, err := c.sendRequest(ctx, "tools/list", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -405,18 +425,9 @@ func (c *SSEMCPClient) ListTools(
 
 func (c *SSEMCPClient) CallTool(
 	ctx context.Context,
-	name string,
-	arguments map[string]interface{},
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	params := struct {
-		Name      string                 `json:"name"`
-		Arguments map[string]interface{} `json:"arguments,omitempty"`
-	}{
-		Name:      name,
-		Arguments: arguments,
-	}
-
-	response, err := c.sendRequest(ctx, "tools/call", params)
+	response, err := c.sendRequest(ctx, "tools/call", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -431,32 +442,17 @@ func (c *SSEMCPClient) CallTool(
 
 func (c *SSEMCPClient) SetLevel(
 	ctx context.Context,
-	level mcp.LoggingLevel,
+	request mcp.SetLevelRequest,
 ) error {
-	params := struct {
-		Level mcp.LoggingLevel `json:"level"`
-	}{
-		Level: level,
-	}
-
-	_, err := c.sendRequest(ctx, "logging/setLevel", params)
+	_, err := c.sendRequest(ctx, "logging/setLevel", request.Params)
 	return err
 }
 
 func (c *SSEMCPClient) Complete(
 	ctx context.Context,
-	ref interface{},
-	argument mcp.CompleteRequestParamsArgument,
+	request mcp.CompleteRequest,
 ) (*mcp.CompleteResult, error) {
-	params := struct {
-		Ref      interface{}                       `json:"ref"`
-		Argument mcp.CompleteRequestParamsArgument `json:"argument"`
-	}{
-		Ref:      ref,
-		Argument: argument,
-	}
-
-	response, err := c.sendRequest(ctx, "completion/complete", params)
+	response, err := c.sendRequest(ctx, "completion/complete", request.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -468,6 +464,8 @@ func (c *SSEMCPClient) Complete(
 
 	return &result, nil
 }
+
+// Helper methods
 
 func (c *SSEMCPClient) GetEndpoint() *url.URL {
 	return c.endpoint
