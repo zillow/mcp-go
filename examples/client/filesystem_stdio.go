@@ -17,7 +17,7 @@ func main() {
 	c, err := client.NewStdioMCPClient(
 		"go",
 		"run",
-		"github.com/mark3labs/mcp-filesystem-server",
+		"github.com/mark3labs/mcp-filesystem-server@latest",
 		"/tmp",
 	)
 	if err != nil {
@@ -31,15 +31,14 @@ func main() {
 
 	// Initialize the client
 	fmt.Println("Initializing client...")
-	initResult, err := c.Initialize(
-		ctx,
-		mcp.ClientCapabilities{},
-		mcp.Implementation{
-			Name:    "example-client",
-			Version: "1.0.0",
-		},
-		"1.0",
-	)
+	initRequest := mcp.InitializeRequest{}
+	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	initRequest.Params.ClientInfo = mcp.Implementation{
+		Name:    "example-client",
+		Version: "1.0.0",
+	}
+
+	initResult, err := c.Initialize(ctx, initRequest)
 	if err != nil {
 		log.Fatalf("Failed to initialize: %v", err)
 	}
@@ -51,7 +50,8 @@ func main() {
 
 	// List Tools
 	fmt.Println("Listing available tools...")
-	tools, err := c.ListTools(ctx, nil)
+	toolsRequest := mcp.ListToolsRequest{}
+	tools, err := c.ListTools(ctx, toolsRequest)
 	if err != nil {
 		log.Fatalf("Failed to list tools: %v", err)
 	}
@@ -62,7 +62,14 @@ func main() {
 
 	// List allowed directories
 	fmt.Println("Listing allowed directories...")
-	result, err := c.CallTool(ctx, "list_allowed_directories", nil)
+	listDirRequest := mcp.CallToolRequest{
+		Request: mcp.Request{
+			Method: "tools/call",
+		},
+	}
+	listDirRequest.Params.Name = "list_allowed_directories"
+
+	result, err := c.CallTool(ctx, listDirRequest)
 	if err != nil {
 		log.Fatalf("Failed to list allowed directories: %v", err)
 	}
@@ -71,9 +78,13 @@ func main() {
 
 	// List /tmp
 	fmt.Println("Listing /tmp directory...")
-	result, err = c.CallTool(ctx, "list_directory", map[string]interface{}{
+	listTmpRequest := mcp.CallToolRequest{}
+	listTmpRequest.Params.Name = "list_directory"
+	listTmpRequest.Params.Arguments = map[string]interface{}{
 		"path": "/tmp",
-	})
+	}
+
+	result, err = c.CallTool(ctx, listTmpRequest)
 	if err != nil {
 		log.Fatalf("Failed to list directory: %v", err)
 	}
@@ -82,9 +93,13 @@ func main() {
 
 	// Create mcp directory
 	fmt.Println("Creating /tmp/mcp directory...")
-	result, err = c.CallTool(ctx, "create_directory", map[string]interface{}{
+	createDirRequest := mcp.CallToolRequest{}
+	createDirRequest.Params.Name = "create_directory"
+	createDirRequest.Params.Arguments = map[string]interface{}{
 		"path": "/tmp/mcp",
-	})
+	}
+
+	result, err = c.CallTool(ctx, createDirRequest)
 	if err != nil {
 		log.Fatalf("Failed to create directory: %v", err)
 	}
@@ -93,10 +108,14 @@ func main() {
 
 	// Create hello.txt
 	fmt.Println("Creating /tmp/mcp/hello.txt...")
-	result, err = c.CallTool(ctx, "write_file", map[string]interface{}{
+	writeFileRequest := mcp.CallToolRequest{}
+	writeFileRequest.Params.Name = "write_file"
+	writeFileRequest.Params.Arguments = map[string]interface{}{
 		"path":    "/tmp/mcp/hello.txt",
 		"content": "Hello World",
-	})
+	}
+
+	result, err = c.CallTool(ctx, writeFileRequest)
 	if err != nil {
 		log.Fatalf("Failed to create file: %v", err)
 	}
@@ -105,9 +124,13 @@ func main() {
 
 	// Verify file contents
 	fmt.Println("Reading /tmp/mcp/hello.txt...")
-	result, err = c.CallTool(ctx, "read_file", map[string]interface{}{
+	readFileRequest := mcp.CallToolRequest{}
+	readFileRequest.Params.Name = "read_file"
+	readFileRequest.Params.Arguments = map[string]interface{}{
 		"path": "/tmp/mcp/hello.txt",
-	})
+	}
+
+	result, err = c.CallTool(ctx, readFileRequest)
 	if err != nil {
 		log.Fatalf("Failed to read file: %v", err)
 	}
@@ -115,11 +138,15 @@ func main() {
 
 	// Get file info
 	fmt.Println("Getting info for /tmp/mcp/hello.txt...")
-	result, err = c.CallTool(ctx, "get_file_info", map[string]interface{}{
+	fileInfoRequest := mcp.CallToolRequest{}
+	fileInfoRequest.Params.Name = "get_file_info"
+	fileInfoRequest.Params.Arguments = map[string]interface{}{
 		"path": "/tmp/mcp/hello.txt",
-	})
+	}
+
+	result, err = c.CallTool(ctx, fileInfoRequest)
 	if err != nil {
-		log.Fatalf("Failed to read file: %v", err)
+		log.Fatalf("Failed to get file info: %v", err)
 	}
 	printToolResult(result)
 }

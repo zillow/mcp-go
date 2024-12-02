@@ -9,197 +9,464 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewDefaultServer(t *testing.T) {
-	s := NewDefaultServer("test", "1.0.0")
-	assert.NotNil(t, s)
-	assert.IsType(t, &DefaultServer{}, s)
+func TestMCPServer_NewMCPServer(t *testing.T) {
+	server := NewMCPServer("test-server", "1.0.0")
+	assert.NotNil(t, server)
+	assert.Equal(t, "test-server", server.name)
+	assert.Equal(t, "1.0.0", server.version)
 }
 
-func TestDefaultServer_Request(t *testing.T) {
-	s := NewDefaultServer("test", "1.0.0")
-	ctx := context.Background()
-
+func TestMCPServer_Capabilities(t *testing.T) {
 	tests := []struct {
-		name           string
-		request        mcp.JSONRPCRequest
-		expectedResult interface{}
-		expectedError  mcp.JSONRPCResponse
+		name     string
+		options  []ServerOption
+		validate func(t *testing.T, response mcp.JSONRPCMessage)
 	}{
 		{
-			name: "Initialize",
-			request: mcp.JSONRPCRequest{}{
-				JSONRPC: "2.0",
-				ID:      1,
-				Method:  "initialize",
-				Params: json.RawMessage(
-					`{"capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"},"protocolVersion":"2024-11-05"}`,
-				),
+			name:    "No capabilities",
+			options: []ServerOption{},
+			validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+				resp, ok := response.(mcp.JSONRPCResponse)
+				assert.True(t, ok)
+
+				initResult, ok := resp.Result.(mcp.InitializeResult)
+				assert.True(t, ok)
+
+				assert.Equal(
+					t,
+					mcp.LATEST_PROTOCOL_VERSION,
+					initResult.ProtocolVersion,
+				)
+				assert.Equal(t, "test-server", initResult.ServerInfo.Name)
+				assert.Equal(t, "1.0.0", initResult.ServerInfo.Version)
+				assert.Nil(t, initResult.Capabilities.Resources)
+				assert.Nil(t, initResult.Capabilities.Prompts)
+				assert.Nil(t, initResult.Capabilities.Tools)
+				assert.Nil(t, initResult.Capabilities.Logging)
 			},
-			expectedResult: &mcp.InitializeResult{},
 		},
 		{
-			name: "Ping",
-			request: mcp.JSONRPCRequest{
-				JSONRPC: "2.0",
-				ID:      2,
-				Method:  "ping",
-				Params:  json.RawMessage(`{}`),
+			name: "All capabilities",
+			options: []ServerOption{
+				WithResourceCapabilities(true, true),
+				WithPromptCapabilities(true),
+				WithToolCapabilities(true),
+				WithLogging(),
 			},
-			expectedResult: struct{}{},
-		},
-		{
-			name: "ListResources",
-			request: mcp.JSONRPCRequest{
-				JSONRPC: "2.0",
-				ID:      3,
-				Method:  "resources/list",
-				Params:  json.RawMessage(`{}`),
-			},
-			expectedResult: &mcp.ListResourcesResult{},
-		},
-		{
-			name: "ListResourceTemplates",
-			request: mcp.JSONRPCRequest{
-				JSONRPC: "2.0",
-				ID:      3,
-				Method:  "resources/templates/list",
-				Params:  json.RawMessage(`{}`),
-			},
-			expectedResult: &mcp.ListResourceTemplatesResult{},
-		},
-		{
-			name: "ReadResource",
-			request: mcp.JSONRPCRequest{
-				JSONRPC: "2.0",
-				ID:      4,
-				Method:  "resources/read",
-				Params:  json.RawMessage(`{"uri":"test"}`),
-			},
-			expectedResult: &mcp.ReadResourceResult{},
-		},
-		{
-			name: "InvalidMethod",
-			request: mcp.JSONRPCRequest{
-				JSONRPC: "2.0",
-				ID:      5,
-				Method:  "invalid",
-				Params:  json.RawMessage(`{}`),
-			},
-			expectedError: mcp.JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      5,
-				Error: &struct {
-					Code    int    `json:"code"`
-					Message string `json:"message"`
-				}{
-					Code:    -32601,
-					Message: "method not found: invalid",
-				},
+			validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+				resp, ok := response.(mcp.JSONRPCResponse)
+				assert.True(t, ok)
+
+				initResult, ok := resp.Result.(mcp.InitializeResult)
+				assert.True(t, ok)
+
+				assert.Equal(
+					t,
+					mcp.LATEST_PROTOCOL_VERSION,
+					initResult.ProtocolVersion,
+				)
+				assert.Equal(t, "test-server", initResult.ServerInfo.Name)
+				assert.Equal(t, "1.0.0", initResult.ServerInfo.Version)
+
+				assert.NotNil(t, initResult.Capabilities.Resources)
+				if initResult.Capabilities.Resources != nil {
+					assert.True(t, initResult.Capabilities.Resources.Subscribe)
+					assert.True(
+						t,
+						initResult.Capabilities.Resources.ListChanged,
+					)
+				}
+
+				assert.NotNil(t, initResult.Capabilities.Prompts)
+				if initResult.Capabilities.Prompts != nil {
+					assert.True(t, initResult.Capabilities.Prompts.ListChanged)
+				}
+
+				assert.NotNil(t, initResult.Capabilities.Tools)
+				if initResult.Capabilities.Tools != nil {
+					assert.True(t, initResult.Capabilities.Tools.ListChanged)
+				}
+
+				assert.NotNil(t, initResult.Capabilities.Logging)
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.Request(ctx, tt.request)
-
-			if tt.expectedError != (mcp.JSONRPCResponse{}) {
-				assert.Equal(t, tt.expectedError, result)
-			} else {
-				assert.NotNil(t, result)
-				assert.Equal(t, "2.0", result.JSONRPC)
-				assert.Equal(t, tt.request.ID, result.ID)
-				assert.Nil(t, result.Error)
-				assert.IsType(t, tt.expectedResult, result.Result)
+			server := NewMCPServer("test-server", "1.0.0", tt.options...)
+			message := mcp.JSONRPCRequest{
+				JSONRPC: "2.0",
+				ID:      1,
+				Request: mcp.Request{
+					Method: "initialize",
+				},
 			}
+			messageBytes, err := json.Marshal(message)
+			assert.NoError(t, err)
+
+			response := server.HandleMessage(context.Background(), messageBytes)
+			tt.validate(t, response)
 		})
 	}
 }
 
-func TestDefaultServer_HandleNotification(t *testing.T) {
-	s := NewDefaultServer("test", "1.0.0")
-	ctx := context.Background()
+func TestMCPServer_HandleValidMessages(t *testing.T) {
+	server := NewMCPServer("test-server", "1.0.0",
+		WithResourceCapabilities(true, true),
+		WithPromptCapabilities(true),
+		WithToolCapabilities(true),
+	)
 
-	s.HandleNotification(
-		"test",
-		func(ctx context.Context, args any) (any, error) {
-			return "notification handled", nil
+	tests := []struct {
+		name     string
+		message  interface{}
+		validate func(t *testing.T, response mcp.JSONRPCMessage)
+	}{
+		{
+			name: "Initialize request",
+			message: mcp.JSONRPCRequest{
+				JSONRPC: "2.0",
+				ID:      1,
+				Request: mcp.Request{
+					Method: "initialize",
+				},
+			},
+			validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+				resp, ok := response.(mcp.JSONRPCResponse)
+				assert.True(t, ok)
+
+				initResult, ok := resp.Result.(mcp.InitializeResult)
+				assert.True(t, ok)
+
+				assert.Equal(
+					t,
+					mcp.LATEST_PROTOCOL_VERSION,
+					initResult.ProtocolVersion,
+				)
+				assert.Equal(t, "test-server", initResult.ServerInfo.Name)
+				assert.Equal(t, "1.0.0", initResult.ServerInfo.Version)
+			},
+		},
+		{
+			name: "Ping request",
+			message: mcp.JSONRPCRequest{
+				JSONRPC: "2.0",
+				ID:      1,
+				Request: mcp.Request{
+					Method: "ping",
+				},
+			},
+			validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+				resp, ok := response.(mcp.JSONRPCResponse)
+				assert.True(t, ok)
+
+				_, ok = resp.Result.(mcp.EmptyResult)
+				assert.True(t, ok)
+			},
+		},
+		{
+			name: "List resources",
+			message: mcp.JSONRPCRequest{
+				JSONRPC: "2.0",
+				ID:      1,
+				Request: mcp.Request{
+					Method: "resources/list",
+				},
+			},
+			validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+				resp, ok := response.(mcp.JSONRPCResponse)
+				assert.True(t, ok)
+
+				listResult, ok := resp.Result.(mcp.ListResourcesResult)
+				assert.True(t, ok)
+				assert.NotNil(t, listResult.Resources)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			messageBytes, err := json.Marshal(tt.message)
+			assert.NoError(t, err)
+
+			response := server.HandleMessage(context.Background(), messageBytes)
+			assert.NotNil(t, response)
+			tt.validate(t, response)
+		})
+	}
+}
+
+func TestMCPServer_HandlePagination(t *testing.T) {
+	server := createTestServer()
+
+	tests := []struct {
+		name     string
+		message  string
+		validate func(t *testing.T, response mcp.JSONRPCMessage)
+	}{
+		{
+			name: "List resources with cursor",
+			message: `{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "resources/list",
+                    "params": {
+                        "cursor": "test-cursor"
+                    }
+                }`,
+			validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+				resp, ok := response.(mcp.JSONRPCResponse)
+				assert.True(t, ok)
+
+				listResult, ok := resp.Result.(mcp.ListResourcesResult)
+				assert.True(t, ok)
+				assert.NotNil(t, listResult.Resources)
+				assert.Equal(t, mcp.Cursor(""), listResult.NextCursor)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := server.HandleMessage(
+				context.Background(),
+				[]byte(tt.message),
+			)
+			tt.validate(t, response)
+		})
+	}
+}
+
+func TestMCPServer_HandleNotifications(t *testing.T) {
+	server := createTestServer()
+	notificationReceived := false
+
+	server.AddNotificationHandler(func(notification mcp.JSONRPCNotification) {
+		notificationReceived = true
+	})
+
+	message := `{
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        }`
+
+	response := server.HandleMessage(context.Background(), []byte(message))
+	assert.Nil(t, response)
+	assert.True(t, notificationReceived)
+}
+
+func TestMCPServer_HandleInvalidMessages(t *testing.T) {
+	server := NewMCPServer("test-server", "1.0.0")
+
+	tests := []struct {
+		name        string
+		message     string
+		expectedErr int
+	}{
+		{
+			name:        "Invalid JSON",
+			message:     `{"jsonrpc": "2.0", "id": 1, "method": "initialize"`,
+			expectedErr: mcp.PARSE_ERROR,
+		},
+		{
+			name:        "Invalid method",
+			message:     `{"jsonrpc": "2.0", "id": 1, "method": "nonexistent"}`,
+			expectedErr: mcp.METHOD_NOT_FOUND,
+		},
+		{
+			name:        "Invalid parameters",
+			message:     `{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": "invalid"}`,
+			expectedErr: mcp.INVALID_REQUEST,
+		},
+		{
+			name:        "Missing JSONRPC version",
+			message:     `{"id": 1, "method": "initialize"}`,
+			expectedErr: mcp.INVALID_REQUEST,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := server.HandleMessage(
+				context.Background(),
+				[]byte(tt.message),
+			)
+			assert.NotNil(t, response)
+
+			errorResponse, ok := response.(mcp.JSONRPCError)
+			assert.True(t, ok)
+			assert.Equal(t, tt.expectedErr, errorResponse.Error.Code)
+		})
+	}
+}
+
+func TestMCPServer_HandleUndefinedHandlers(t *testing.T) {
+	server := NewMCPServer("test-server", "1.0.0",
+		WithResourceCapabilities(true, true),
+		WithPromptCapabilities(true),
+		WithToolCapabilities(true),
+	)
+
+	tests := []struct {
+		name        string
+		message     string
+		expectedErr int
+	}{
+		{
+			name: "Undefined tool",
+			message: `{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "undefined-tool",
+                        "arguments": {}
+                    }
+                }`,
+			expectedErr: mcp.INVALID_PARAMS,
+		},
+		{
+			name: "Undefined prompt",
+			message: `{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "prompts/get",
+                    "params": {
+                        "name": "undefined-prompt",
+                        "arguments": {}
+                    }
+                }`,
+			expectedErr: mcp.INVALID_PARAMS,
+		},
+		{
+			name: "Undefined resource",
+			message: `{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "resources/read",
+                    "params": {
+                        "uri": "undefined-resource"
+                    }
+                }`,
+			expectedErr: mcp.INVALID_PARAMS,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := server.HandleMessage(
+				context.Background(),
+				[]byte(tt.message),
+			)
+			assert.NotNil(t, response)
+
+			errorResponse, ok := response.(mcp.JSONRPCError)
+			assert.True(t, ok)
+			assert.Equal(t, tt.expectedErr, errorResponse.Error.Code)
+		})
+	}
+}
+
+func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
+	server := NewMCPServer(
+		"test-server",
+		"1.0.0",
+	) // No capabilities enabled
+
+	tests := []struct {
+		name        string
+		message     string
+		expectedErr int
+	}{
+		{
+			name: "Tools without capabilities",
+			message: `{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "test-tool"
+                    }
+                }`,
+			expectedErr: mcp.METHOD_NOT_FOUND,
+		},
+		{
+			name: "Prompts without capabilities",
+			message: `{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "prompts/get",
+                    "params": {
+                        "name": "test-prompt"
+                    }
+                }`,
+			expectedErr: mcp.METHOD_NOT_FOUND,
+		},
+		{
+			name: "Resources without capabilities",
+			message: `{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "resources/read",
+                    "params": {
+                        "uri": "test-resource"
+                    }
+                }`,
+			expectedErr: mcp.METHOD_NOT_FOUND,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := server.HandleMessage(
+				context.Background(),
+				[]byte(tt.message),
+			)
+			assert.NotNil(t, response)
+
+			errorResponse, ok := response.(mcp.JSONRPCError)
+			assert.True(t, ok)
+			assert.Equal(t, tt.expectedErr, errorResponse.Error.Code)
+		})
+	}
+}
+
+func createTestServer() *MCPServer {
+	server := NewMCPServer("test-server", "1.0.0",
+		WithResourceCapabilities(true, true),
+		WithPromptCapabilities(true),
+		WithToolCapabilities(true),
+	)
+
+	server.AddResource(
+		"test-resource",
+		func(uri string) ([]interface{}, error) {
+			return []interface{}{
+				mcp.TextResourceContents{
+					ResourceContents: mcp.ResourceContents{
+						URI:      uri,
+						MIMEType: "text/plain",
+					},
+					Text: "test content",
+				},
+			}, nil
 		},
 	)
 
-	request := mcp.JSONRPCRequest{
-		JSONRPC: "2.0",
-		Method:  "notifications/test",
-		Params:  json.RawMessage(`{}`),
-	}
+	server.AddTool(
+		"test-tool",
+		func(name string, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{
+				Content: []interface{}{
+					mcp.TextContent{
+						Type: "text",
+						Text: "test result",
+					},
+				},
+			}, nil
+		},
+	)
 
-	result := s.Request(ctx, request)
-	assert.NotNil(t, result)
-	assert.Equal(t, "2.0", result.JSONRPC)
-	assert.Nil(t, result.Error)
-	assert.Equal(t, "notification handled", result.Result)
-}
-
-func TestDefaultServer_HandlersRegistration(t *testing.T) {
-	s := NewDefaultServer("test", "1.0.0")
-
-	handlers := []struct {
-		name string
-		fn   interface{}
-	}{
-		{"Initialize", func(InitializeFunc) {}},
-		{"Ping", func(PingFunc) {}},
-		{"ListResources", func(ListResourcesFunc) {}},
-		{"ListResourceTemplates", func(ListResourceTemplatesFunc) {}},
-		{"ReadResource", func(ReadResourceFunc) {}},
-		{"Subscribe", func(SubscribeFunc) {}},
-		{"Unsubscribe", func(UnsubscribeFunc) {}},
-		{"ListPrompts", func(ListPromptsFunc) {}},
-		{"GetPrompt", func(GetPromptFunc) {}},
-		{"ListTools", func(ListToolsFunc) {}},
-		{"CallTool", func(CallToolFunc) {}},
-		{"SetLevel", func(SetLevelFunc) {}},
-		{"Complete", func(CompleteFunc) {}},
-	}
-
-	for _, h := range handlers {
-		t.Run(h.name, func(t *testing.T) {
-			assert.NotPanics(t, func() {
-				s.(*DefaultServer).handlers[getMethodName(h.name)] = h.fn
-			})
-		})
-	}
-}
-
-func getMethodName(handlerName string) string {
-	switch handlerName {
-	case "Initialize":
-		return "initialize"
-	case "Ping":
-		return "ping"
-	case "ListResources":
-		return "resources/list"
-	case "ListResourceTemplates":
-		return "resources/templates/list"
-	case "ReadResource":
-		return "resources/read"
-	case "Subscribe":
-		return "resources/subscribe"
-	case "Unsubscribe":
-		return "resources/unsubscribe"
-	case "ListPrompts":
-		return "prompts/list"
-	case "GetPrompt":
-		return "prompts/get"
-	case "ListTools":
-		return "tools/list"
-	case "CallTool":
-		return "tools/call"
-	case "SetLevel":
-		return "logging/setLevel"
-	case "Complete":
-		return "completion/complete"
-	default:
-		return ""
-	}
+	return server
 }

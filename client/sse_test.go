@@ -2,201 +2,174 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSSEMCPClient(t *testing.T) {
-	// Create context with timeout for the entire test
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Create default server and test server
-	mcpServer := server.NewDefaultServer("test-server", "1.0.0")
-	_, testServer := server.NewTestServer(mcpServer)
-
-	// Ensure test server is closed
-	t.Cleanup(func() {
-		testServer.Close()
-	})
-
-	// Create SSE client
-	client, err := NewSSEMCPClient(testServer.URL + "/sse")
-	require.NoError(t, err)
-
-	// Start client and ensure it's closed
-	err = client.Start(ctx)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		err := client.Close()
-		if err != nil {
-			t.Logf("Error closing client: %v", err)
-		}
-	})
-
-	// Wait for endpoint to be received
-	err = waitForEndpoint(client, 2*time.Second)
-	require.NoError(t, err, "Failed to receive endpoint")
-
-	t.Run("Initialize", func(t *testing.T) {
-		result, err := client.Initialize(
-			ctx,
-			mcp.ClientCapabilities{},
-			mcp.Implementation{
-				Name: "test-client",
-
-				Version: "1.0.0",
-			},
-			"2024-11-05",
-		)
-
-		assert.NoError(t, err)
-		assert.Equal(t, "test-server", result.ServerInfo.Name)
-		assert.Equal(t, "1.0.0", result.ServerInfo.Version)
-		assert.Equal(t, "2024-11-05", result.ProtocolVersion)
-	})
-
-	t.Run("Ping", func(t *testing.T) {
-		err := client.Ping(ctx)
-		assert.NoError(t, err)
-	})
-
-	t.Run("ListResources", func(t *testing.T) {
-		result, err := client.ListResources(ctx, nil)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.Empty(t, result.Resources)
-	})
-
-	t.Run("ReadResource", func(t *testing.T) {
-		result, err := client.ReadResource(ctx, "test://resource1")
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.Empty(t, result.Contents)
-	})
-
-	t.Run("Subscribe and Unsubscribe", func(t *testing.T) {
-		err := client.Subscribe(ctx, "test://resource1")
-		assert.NoError(t, err)
-
-		err = client.Unsubscribe(ctx, "test://resource1")
-		assert.NoError(t, err)
-	})
-
-	t.Run("ListPrompts", func(t *testing.T) {
-		result, err := client.ListPrompts(ctx, nil)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.Empty(t, result.Prompts)
-	})
-
-	t.Run("GetPrompt", func(t *testing.T) {
-		result, err := client.GetPrompt(ctx, "test-prompt", nil)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.Empty(t, result.Messages)
-	})
-
-	t.Run("ListTools", func(t *testing.T) {
-		result, err := client.ListTools(ctx, nil)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.Empty(t, result.Tools)
-	})
-
-	t.Run("CallTool", func(t *testing.T) {
-		result, err := client.CallTool(ctx, "test-tool", nil)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.Empty(t, result.Content)
-	})
-
-	t.Run("SetLevel", func(t *testing.T) {
-		err := client.SetLevel(ctx, mcp.LoggingLevelDebug)
-		assert.NoError(t, err)
-	})
-
-	t.Run("Complete", func(t *testing.T) {
-		result, err := client.Complete(
-			ctx,
-			"test-ref",
-			mcp.CompleteRequestParamsArgument{
-				Name: "test-arg",
-			},
-		)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.Empty(t, result.Completion.Values)
-	})
-}
-
-func TestSSEMCPClientErrors(t *testing.T) {
-	// Create context with timeout for the entire test
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Test with invalid URL
-	_, err := NewSSEMCPClient("://invalid-url")
-	assert.Error(t, err)
-
-	// Test methods before initialization
-	client, err := NewSSEMCPClient("http://localhost:8080/sse")
-	require.NoError(t, err)
-
-	_, err = client.ListResources(ctx, nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "client not initialized")
-
-	// Test with invalid method parameters
-	mcpServer := server.NewDefaultServer("test-server", "1.0.0")
-	_, testServer := server.NewTestServer(mcpServer)
-
-	// Ensure test server is closed
-	t.Cleanup(func() {
-		testServer.Close()
-	})
-
-	client, err = NewSSEMCPClient(testServer.URL + "/sse")
-	require.NoError(t, err)
-
-	err = client.Start(ctx)
-	require.NoError(t, err)
-
-	// Ensure client is closed
-	t.Cleanup(func() {
-		err := client.Close()
-		if err != nil {
-			t.Logf("Error closing client: %v", err)
-		}
-	})
-
-	// Wait for endpoint to be received
-	err = waitForEndpoint(client, 2*time.Second)
-	require.NoError(t, err, "Failed to receive endpoint")
-
-	// Test initialize with missing required fields
-	_, err = client.Initialize(
-		ctx,
-		mcp.ClientCapabilities{},
-		mcp.Implementation{},
-		"",
+	// Create MCP server with capabilities
+	mcpServer := server.NewMCPServer(
+		"test-server",
+		"1.0.0",
+		server.WithResourceCapabilities(true, true),
+		server.WithPromptCapabilities(true),
+		server.WithToolCapabilities(true),
 	)
-	assert.Error(t, err)
-}
 
-func waitForEndpoint(client *SSEMCPClient, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if client.GetEndpoint() != nil {
-			return nil
+	// Create test server
+	testServer := server.NewTestServer(mcpServer)
+	defer testServer.Close()
+
+	t.Run("Can create client", func(t *testing.T) {
+		client, err := NewSSEMCPClient(testServer.URL + "/sse")
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return fmt.Errorf("timeout waiting for endpoint")
+		defer client.Close()
+
+		if client.baseURL == nil {
+			t.Error("Base URL should not be nil")
+		}
+	})
+
+	t.Run("Can initialize and make requests", func(t *testing.T) {
+		client, err := NewSSEMCPClient(testServer.URL + "/sse")
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+		defer client.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Start the client
+		if err := client.Start(ctx); err != nil {
+			t.Fatalf("Failed to start client: %v", err)
+		}
+
+		// Initialize
+		initRequest := mcp.InitializeRequest{}
+		initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+		initRequest.Params.ClientInfo = mcp.Implementation{
+			Name:    "test-client",
+			Version: "1.0.0",
+		}
+
+		result, err := client.Initialize(ctx, initRequest)
+		if err != nil {
+			t.Fatalf("Failed to initialize: %v", err)
+		}
+
+		if result.ServerInfo.Name != "test-server" {
+			t.Errorf(
+				"Expected server name 'test-server', got '%s'",
+				result.ServerInfo.Name,
+			)
+		}
+
+		// Test Ping
+		if err := client.Ping(ctx); err != nil {
+			t.Errorf("Ping failed: %v", err)
+		}
+
+		// Test ListTools
+		toolsRequest := mcp.ListToolsRequest{}
+		_, err = client.ListTools(ctx, toolsRequest)
+		if err != nil {
+			t.Errorf("ListTools failed: %v", err)
+		}
+	})
+
+	t.Run("Can handle notifications", func(t *testing.T) {
+		client, err := NewSSEMCPClient(testServer.URL + "/sse")
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+		defer client.Close()
+
+		notificationReceived := make(chan mcp.JSONRPCNotification, 1)
+		client.OnNotification(func(notification mcp.JSONRPCNotification) {
+			notificationReceived <- notification
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := client.Start(ctx); err != nil {
+			t.Fatalf("Failed to start client: %v", err)
+		}
+
+		// Initialize first
+		initRequest := mcp.InitializeRequest{}
+		initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+		initRequest.Params.ClientInfo = mcp.Implementation{
+			Name:    "test-client",
+			Version: "1.0.0",
+		}
+
+		_, err = client.Initialize(ctx, initRequest)
+		if err != nil {
+			t.Fatalf("Failed to initialize: %v", err)
+		}
+
+		// Subscribe to a resource to test notifications
+		subRequest := mcp.SubscribeRequest{}
+		subRequest.Params.URI = "test://resource"
+		if err := client.Subscribe(ctx, subRequest); err != nil {
+			t.Fatalf("Failed to subscribe: %v", err)
+		}
+
+		select {
+		case <-notificationReceived:
+			// Success
+		case <-time.After(time.Second):
+			t.Error("Timeout waiting for notification")
+		}
+	})
+
+	t.Run("Handles errors properly", func(t *testing.T) {
+		client, err := NewSSEMCPClient(testServer.URL + "/sse")
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+		defer client.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := client.Start(ctx); err != nil {
+			t.Fatalf("Failed to start client: %v", err)
+		}
+
+		// Try to make a request without initializing
+		toolsRequest := mcp.ListToolsRequest{}
+		_, err = client.ListTools(ctx, toolsRequest)
+		if err == nil {
+			t.Error("Expected error when making request before initialization")
+		}
+	})
+
+	t.Run("Handles context cancellation", func(t *testing.T) {
+		client, err := NewSSEMCPClient(testServer.URL + "/sse")
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+		defer client.Close()
+
+		if err := client.Start(context.Background()); err != nil {
+			t.Fatalf("Failed to start client: %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		toolsRequest := mcp.ListToolsRequest{}
+		_, err = client.ListTools(ctx, toolsRequest)
+		if err == nil {
+			t.Error("Expected error when context is cancelled")
+		}
+	})
 }

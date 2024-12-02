@@ -114,8 +114,8 @@ func NewJSONRPCError(
 	code int,
 	message string,
 	data interface{},
-) JSONRPCResponse {
-	return JSONRPCResponse{
+) JSONRPCError {
+	return JSONRPCError{
 		JSONRPC: JSONRPC_VERSION,
 		ID:      id,
 		Error: struct {

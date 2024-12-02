@@ -8,17 +8,14 @@ import (
 	"net/http/httptest"
 	"sync"
 
-	"github.com/charmbracelet/log"
-	"github.com/mark3labs/mcp-go/mcp"
-
 	"github.com/google/uuid"
 )
 
 type SSEServer struct {
-	mcpServer MCPServer
-	baseURL   string
-	sessions  sync.Map
-	srv       *http.Server
+	server   *MCPServer
+	baseURL  string
+	sessions sync.Map
+	srv      *http.Server
 }
 
 type sseSession struct {
@@ -27,22 +24,19 @@ type sseSession struct {
 	done    chan struct{}
 }
 
-func NewSSEServer(mcpServer MCPServer, baseURL string) *SSEServer {
+func NewSSEServer(server *MCPServer, baseURL string) *SSEServer {
 	return &SSEServer{
-		mcpServer: mcpServer,
-		baseURL:   baseURL,
+		server:  server,
+		baseURL: baseURL,
 	}
 }
 
 // NewTestServer creates a test server for testing purposes
-// It returns the SSEServer and a test server that can be closed when done
-func NewTestServer(mcpServer MCPServer) (*SSEServer, *httptest.Server) {
-	// Create SSE server with test server's URL as base
+func NewTestServer(server *MCPServer) *httptest.Server {
 	sseServer := &SSEServer{
-		mcpServer: mcpServer,
+		server: server,
 	}
 
-	// Create test HTTP server
 	testServer := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
@@ -56,10 +50,8 @@ func NewTestServer(mcpServer MCPServer) (*SSEServer, *httptest.Server) {
 		}),
 	)
 
-	// Set base URL from test server
 	sseServer.baseURL = testServer.URL
-
-	return sseServer, testServer
+	return testServer
 }
 
 func (s *SSEServer) Start(addr string) error {
@@ -77,7 +69,6 @@ func (s *SSEServer) Start(addr string) error {
 
 func (s *SSEServer) Shutdown(ctx context.Context) error {
 	if s.srv != nil {
-		// Clean up sessions
 		s.sessions.Range(func(key, value interface{}) bool {
 			if session, ok := value.(*sseSession); ok {
 				close(session.done)
@@ -97,7 +88,6 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -109,26 +99,24 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create new session
 	sessionID := uuid.New().String()
-	log.Info("New client connected", "ID", sessionID)
 	session := &sseSession{
 		writer:  w,
 		flusher: flusher,
 		done:    make(chan struct{}),
 	}
 
-	// Store session
 	s.sessions.Store(sessionID, session)
 	defer s.sessions.Delete(sessionID)
 
-	// Send endpoint event
-	messageEndpoint := fmt.Sprintf("%s/message?sessionId=%s", s.baseURL,
-		sessionID)
+	messageEndpoint := fmt.Sprintf(
+		"%s/message?sessionId=%s",
+		s.baseURL,
+		sessionID,
+	)
 	fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", messageEndpoint)
 	flusher.Flush()
 
-	// Keep connection alive until client disconnects
 	<-r.Context().Done()
 	close(session.done)
 }
@@ -152,42 +140,36 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	session := sessionI.(*sseSession)
 
-	// Parse JSONRPC request
-	var request mcp.JSONRPCRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+	// Parse message as raw JSON
+	var rawMessage json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&rawMessage); err != nil {
 		s.writeJSONRPCError(w, nil, -32700, "Parse error")
 		return
 	}
 
-	// Process request through MCPServer
-	response := s.mcpServer.Request(r.Context(), request)
+	// Process message through MCPServer
+	response := s.server.HandleMessage(r.Context(), rawMessage)
 
-	// Send response via SSE
-	eventData, _ := json.Marshal(response)
-	fmt.Fprintf(session.writer, "event: message\ndata: %s\n\n", eventData)
-	session.flusher.Flush()
+	// Send response via SSE if there is one
+	if response != nil {
+		eventData, _ := json.Marshal(response)
+		fmt.Fprintf(session.writer, "event: message\ndata: %s\n\n", eventData)
+		session.flusher.Flush()
 
-	// Send HTTP response
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(response)
+		// Send HTTP response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(response)
+	}
 }
 
-func (s *SSEServer) writeJSONRPCError(w http.ResponseWriter, id interface{},
-	code int, message string) {
-	response := mcp.JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      id,
-		Error: struct {
-			Code    int         `json:"code"`
-			Message string      `json:"message"`
-			Data    interface{} `json:"data,omitempty"`
-		}{
-			Code:    code,
-			Message: message,
-		},
-	}
-
+func (s *SSEServer) writeJSONRPCError(
+	w http.ResponseWriter,
+	id interface{},
+	code int,
+	message string,
+) {
+	response := createErrorResponse(id, code, message)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
 	json.NewEncoder(w).Encode(response)

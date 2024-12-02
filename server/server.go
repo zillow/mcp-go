@@ -2,436 +2,582 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-type MCPServer interface {
-	Request(ctx context.Context, request mcp.JSONRPCRequest) mcp.JSONRPCResponse
-	RequestSampling(
-		ctx context.Context,
-		request mcp.CreateMessageRequest,
-	) mcp.JSONRPCRequest
-	HandleInitialize(InitializeFunc)
-	HandlePing(PingFunc)
-	HandleListResources(ListResourcesFunc)
-	HandleListResourceTemplates(ListResourceTemplatesFunc)
-	HandleReadResource(ReadResourceFunc)
-	HandleSubscribe(SubscribeFunc)
-	HandleUnsubscribe(UnsubscribeFunc)
-	HandleListPrompts(ListPromptsFunc)
-	HandleGetPrompt(GetPromptFunc)
-	HandleListTools(ListToolsFunc)
-	HandleCallTool(CallToolFunc)
-	HandleSetLevel(SetLevelFunc)
-	HandleComplete(CompleteFunc)
-	HandleNotification(string, NotificationFunc)
+type MCPServer struct {
+	name              string
+	version           string
+	resources         map[string]ResourceHandlerFunc
+	resourceTemplates map[string]ResourceTemplateHandlerFunc
+	prompts           map[string]PromptHandlerFunc
+	tools             map[string]ToolHandlerFunc
+	notifications     []NotificationHandlerFunc
+	capabilities      serverCapabilities
 }
 
-type DefaultServer struct {
-	handlers map[string]interface{}
-	name     string
-	version  string
+type serverCapabilities struct {
+	resources *resourceCapabilities
+	prompts   *promptCapabilities
+	tools     *toolCapabilities
+	logging   bool
 }
 
-func NewDefaultServer(name, version string) MCPServer {
-	s := &DefaultServer{
-		handlers: make(map[string]interface{}),
-		name:     name,
-		version:  version,
+type resourceCapabilities struct {
+	subscribe   bool
+	listChanged bool
+}
+
+type promptCapabilities struct {
+	listChanged bool
+}
+
+type toolCapabilities struct {
+	listChanged bool
+}
+
+type ServerOption func(*MCPServer)
+
+type ResourceHandlerFunc func(uri string) ([]interface{}, error)
+type ResourceTemplateHandlerFunc func() (mcp.ResourceTemplate, error)
+
+type PromptHandlerFunc func(name string, arguments map[string]string) (*mcp.GetPromptResult, error)
+
+type ToolHandlerFunc func(name string, arguments map[string]interface{}) (*mcp.CallToolResult, error)
+type NotificationHandlerFunc func(notification mcp.JSONRPCNotification)
+
+func WithResourceCapabilities(subscribe, listChanged bool) ServerOption {
+	return func(s *MCPServer) {
+		s.capabilities.resources = &resourceCapabilities{
+			subscribe:   subscribe,
+			listChanged: listChanged,
+		}
+	}
+}
+
+func WithPromptCapabilities(listChanged bool) ServerOption {
+	return func(s *MCPServer) {
+		s.capabilities.prompts = &promptCapabilities{
+			listChanged: listChanged,
+		}
+	}
+}
+
+func WithToolCapabilities(listChanged bool) ServerOption {
+	return func(s *MCPServer) {
+		s.capabilities.tools = &toolCapabilities{
+			listChanged: listChanged,
+		}
+	}
+}
+
+func WithLogging() ServerOption {
+	return func(s *MCPServer) {
+		s.capabilities.logging = true
+	}
+}
+
+func NewMCPServer(
+	name, version string,
+	opts ...ServerOption,
+) *MCPServer {
+	s := &MCPServer{
+		resources:         make(map[string]ResourceHandlerFunc),
+		resourceTemplates: make(map[string]ResourceTemplateHandlerFunc),
+		prompts:           make(map[string]PromptHandlerFunc),
+		tools:             make(map[string]ToolHandlerFunc),
+		name:              name,
+		version:           version,
 	}
 
-	s.HandleInitialize(s.defaultInitialize)
-	s.HandlePing(s.defaultPing)
-	s.HandleListResources(s.defaultListResources)
-	s.HandleListResourceTemplates(s.defaultListResourceTemplates)
-	s.HandleReadResource(s.defaultReadResource)
-	s.HandleSubscribe(s.defaultSubscribe)
-	s.HandleUnsubscribe(s.defaultUnsubscribe)
-	s.HandleListPrompts(s.defaultListPrompts)
-	s.HandleGetPrompt(s.defaultGetPrompt)
-	s.HandleListTools(s.defaultListTools)
-	s.HandleCallTool(s.defaultCallTool)
-	s.HandleSetLevel(s.defaultSetLevel)
-	s.HandleComplete(s.defaultComplete)
+	for _, opt := range opts {
+		opt(s)
+	}
 
 	return s
 }
 
-func (s *DefaultServer) Request(
+func (s *MCPServer) HandleMessage(
 	ctx context.Context,
-	request mcp.JSONRPCRequest,
-) mcp.JSONRPCResponse {
-	handler, ok := s.handlers[request.Method]
-	if !ok {
-		return mcp.JSONRPCResponse{
-			JSONRPC: mcp.JSONRPC_VERSION,
-			ID:      request.ID,
-			Error: struct {
-				Code    int         `json:"code"`
-				Message string      `json:"message"`
-				Data    interface{} `json:"data,omitempty"`
-			}{
-				Code:    mcp.METHOD_NOT_FOUND,
-				Message: "Method not found",
-			},
+	message json.RawMessage,
+) mcp.JSONRPCMessage {
+	var baseMessage struct {
+		JSONRPC string      `json:"jsonrpc"`
+		Method  string      `json:"method"`
+		ID      interface{} `json:"id,omitempty"`
+	}
+
+	if err := json.Unmarshal(message, &baseMessage); err != nil {
+		return createErrorResponse(
+			nil,
+			mcp.PARSE_ERROR,
+			"Failed to parse message",
+		)
+	}
+
+	// Check for valid JSONRPC version
+	if baseMessage.JSONRPC != mcp.JSONRPC_VERSION {
+		return createErrorResponse(
+			baseMessage.ID,
+			mcp.INVALID_REQUEST,
+			"Invalid JSON-RPC version",
+		)
+	}
+
+	if baseMessage.ID == nil {
+		var notification mcp.JSONRPCNotification
+		if err := json.Unmarshal(message, &notification); err != nil {
+			return createErrorResponse(
+				nil,
+				mcp.PARSE_ERROR,
+				"Failed to parse notification",
+			)
+		}
+		return s.handleNotification(notification)
+	}
+
+	switch baseMessage.Method {
+	case "initialize":
+		var request mcp.InitializeRequest
+		if err := json.Unmarshal(message, &request); err != nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.INVALID_REQUEST,
+				"Invalid initialize request",
+			)
+		}
+		return s.handleInitialize(baseMessage.ID, request)
+	case "ping":
+		var request mcp.PingRequest
+		if err := json.Unmarshal(message, &request); err != nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.INVALID_REQUEST,
+				"Invalid ping request",
+			)
+		}
+		return s.handlePing(baseMessage.ID, request)
+	case "resources/list":
+		if s.capabilities.resources == nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.METHOD_NOT_FOUND,
+				"Resources not supported",
+			)
+		}
+		var request mcp.ListResourcesRequest
+		if err := json.Unmarshal(message, &request); err != nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.INVALID_REQUEST,
+				"Invalid list resources request",
+			)
+		}
+		return s.handleListResources(baseMessage.ID, request)
+	case "resources/templates/list":
+		if s.capabilities.resources == nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.METHOD_NOT_FOUND,
+				"Resources not supported",
+			)
+		}
+		var request mcp.ListResourceTemplatesRequest
+		if err := json.Unmarshal(message, &request); err != nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.INVALID_REQUEST,
+				"Invalid list resource templates request",
+			)
+		}
+		return s.handleListResourceTemplates(baseMessage.ID, request)
+	case "resources/read":
+		if s.capabilities.resources == nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.METHOD_NOT_FOUND,
+				"Resources not supported",
+			)
+		}
+		var request mcp.ReadResourceRequest
+		if err := json.Unmarshal(message, &request); err != nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.INVALID_REQUEST,
+				"Invalid read resource request",
+			)
+		}
+		return s.handleReadResource(baseMessage.ID, request)
+	case "prompts/list":
+		if s.capabilities.prompts == nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.METHOD_NOT_FOUND,
+				"Prompts not supported",
+			)
+		}
+		var request mcp.ListPromptsRequest
+		if err := json.Unmarshal(message, &request); err != nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.INVALID_REQUEST,
+				"Invalid list prompts request",
+			)
+		}
+		return s.handleListPrompts(baseMessage.ID, request)
+	case "prompts/get":
+		if s.capabilities.prompts == nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.METHOD_NOT_FOUND,
+				"Prompts not supported",
+			)
+		}
+		var request mcp.GetPromptRequest
+		if err := json.Unmarshal(message, &request); err != nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.INVALID_REQUEST,
+				"Invalid get prompt request",
+			)
+		}
+		return s.handleGetPrompt(baseMessage.ID, request)
+	case "tools/list":
+		if s.capabilities.tools == nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.METHOD_NOT_FOUND,
+				"Tools not supported",
+			)
+		}
+		var request mcp.ListToolsRequest
+		if err := json.Unmarshal(message, &request); err != nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.INVALID_REQUEST,
+				"Invalid list tools request",
+			)
+		}
+		return s.handleListTools(baseMessage.ID, request)
+	case "tools/call":
+		if s.capabilities.tools == nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.METHOD_NOT_FOUND,
+				"Tools not supported",
+			)
+		}
+		var request mcp.CallToolRequest
+		if err := json.Unmarshal(message, &request); err != nil {
+			return createErrorResponse(
+				baseMessage.ID,
+				mcp.INVALID_REQUEST,
+				"Invalid call tool request",
+			)
+		}
+		return s.handleToolCall(baseMessage.ID, request)
+	default:
+		return createErrorResponse(
+			baseMessage.ID,
+			mcp.METHOD_NOT_FOUND,
+			fmt.Sprintf("Method %s not found", baseMessage.Method),
+		)
+	}
+}
+
+func (s *MCPServer) AddResource(uri string, handler ResourceHandlerFunc) {
+	if s.capabilities.resources == nil {
+		panic("Resource capabilities not enabled")
+	}
+	s.resources[uri] = handler
+}
+
+func (s *MCPServer) AddResourceTemplate(
+	uriTemplate string,
+	handler ResourceTemplateHandlerFunc,
+) {
+	if s.capabilities.resources == nil {
+		panic("Resource capabilities not enabled")
+	}
+	s.resourceTemplates[uriTemplate] = handler
+}
+
+func (s *MCPServer) AddPrompt(name string, handler PromptHandlerFunc) {
+	if s.capabilities.prompts == nil {
+		panic("Prompt capabilities not enabled")
+	}
+	s.prompts[name] = handler
+}
+
+func (s *MCPServer) AddTool(name string, handler ToolHandlerFunc) {
+	if s.capabilities.tools == nil {
+		panic("Tool capabilities not enabled")
+	}
+	s.tools[name] = handler
+}
+
+func (s *MCPServer) AddNotificationHandler(
+	handler NotificationHandlerFunc,
+) {
+	s.notifications = append(s.notifications, handler)
+}
+
+func (s *MCPServer) handleInitialize(
+	id interface{},
+	request mcp.InitializeRequest,
+) mcp.JSONRPCMessage {
+	capabilities := mcp.ServerCapabilities{}
+
+	if s.capabilities.resources != nil {
+		capabilities.Resources = &struct {
+			Subscribe   bool `json:"subscribe,omitempty"`
+			ListChanged bool `json:"listChanged,omitempty"`
+		}{
+			Subscribe:   s.capabilities.resources.subscribe,
+			ListChanged: s.capabilities.resources.listChanged,
 		}
 	}
 
-	result, err := callHandler(ctx, handler, request.Params)
-	if err != nil {
-		return mcp.JSONRPCResponse{
-			JSONRPC: mcp.JSONRPC_VERSION,
-			ID:      request.ID,
-			Error: struct {
-				Code    int         `json:"code"`
-				Message string      `json:"message"`
-				Data    interface{} `json:"data,omitempty"`
-			}{
-				Code:    mcp.INTERNAL_ERROR,
-				Message: err.Error(),
-			},
+	if s.capabilities.prompts != nil {
+		capabilities.Prompts = &struct {
+			ListChanged bool `json:"listChanged,omitempty"`
+		}{
+			ListChanged: s.capabilities.prompts.listChanged,
 		}
 	}
 
-	return mcp.JSONRPCResponse{
-		JSONRPC: mcp.JSONRPC_VERSION,
-		ID:      request.ID,
-		Result:  result,
+	if s.capabilities.tools != nil {
+		capabilities.Tools = &struct {
+			ListChanged bool `json:"listChanged,omitempty"`
+		}{
+			ListChanged: s.capabilities.tools.listChanged,
+		}
 	}
-}
 
-func (s *DefaultServer) RequestSampling(
-	ctx context.Context,
-	request mcp.CreateMessageRequest,
-) mcp.JSONRPCRequest {
-	// Implementation for requesting sampling
-	panic("Not implemented")
-}
+	if s.capabilities.logging {
+		capabilities.Logging = &struct{}{}
+	}
 
-// Handler type definitions
-type InitializeFunc func(context.Context, mcp.InitializeRequest) (mcp.InitializeResult, error)
-type PingFunc func(context.Context, mcp.PingRequest) (mcp.EmptyResult, error)
-
-type ListResourcesFunc func(context.Context, mcp.ListResourcesRequest) (mcp.ListResourcesResult, error)
-
-type ListResourceTemplatesFunc func(context.Context, mcp.ListResourceTemplatesRequest) (mcp.ListResourceTemplatesResult, error)
-
-type ReadResourceFunc func(context.Context, mcp.ReadResourceRequest) (mcp.ReadResourceResult, error)
-
-type SubscribeFunc func(context.Context, mcp.SubscribeRequest) (mcp.EmptyResult, error)
-
-type UnsubscribeFunc func(context.Context, mcp.UnsubscribeRequest) (mcp.EmptyResult, error)
-
-type ListPromptsFunc func(context.Context, mcp.ListPromptsRequest) (mcp.ListPromptsResult, error)
-
-type GetPromptFunc func(context.Context, mcp.GetPromptRequest) (mcp.GetPromptResult, error)
-
-type ListToolsFunc func(context.Context, mcp.ListToolsRequest) (mcp.ListToolsResult, error)
-
-type CallToolFunc func(context.Context, mcp.CallToolRequest) (mcp.CallToolResult, error)
-
-type SetLevelFunc func(context.Context, mcp.SetLevelRequest) (mcp.EmptyResult, error)
-
-type CompleteFunc func(context.Context, mcp.CompleteRequest) (mcp.CompleteResult, error)
-type NotificationFunc func(context.Context, mcp.JSONRPCNotification)
-
-// Handler registration methods
-func (s *DefaultServer) HandleInitialize(
-	f InitializeFunc,
-) {
-	s.handlers["initialize"] = f
-}
-
-func (s *DefaultServer) HandlePing(
-	f PingFunc,
-) {
-	s.handlers["ping"] = f
-}
-
-func (s *DefaultServer) HandleListResources(
-	f ListResourcesFunc,
-) {
-	s.handlers["resources/list"] = f
-}
-
-func (s *DefaultServer) HandleListResourceTemplates(
-	f ListResourceTemplatesFunc,
-) {
-	s.handlers["resources/templates/list"] = f
-}
-
-func (s *DefaultServer) HandleReadResource(
-	f ReadResourceFunc,
-) {
-	s.handlers["resources/read"] = f
-}
-
-func (s *DefaultServer) HandleSubscribe(
-	f SubscribeFunc,
-) {
-	s.handlers["resources/subscribe"] = f
-}
-
-func (s *DefaultServer) HandleUnsubscribe(
-	f UnsubscribeFunc,
-) {
-	s.handlers["resources/unsubscribe"] = f
-}
-
-func (s *DefaultServer) HandleListPrompts(
-	f ListPromptsFunc,
-) {
-	s.handlers["prompts/list"] = f
-}
-
-func (s *DefaultServer) HandleGetPrompt(
-	f GetPromptFunc,
-) {
-	s.handlers["prompts/get"] = f
-}
-
-func (s *DefaultServer) HandleListTools(
-	f ListToolsFunc,
-) {
-	s.handlers["tools/list"] = f
-}
-
-func (s *DefaultServer) HandleCallTool(
-	f CallToolFunc,
-) {
-	s.handlers["tools/call"] = f
-}
-
-func (s *DefaultServer) HandleSetLevel(
-	f SetLevelFunc,
-) {
-	s.handlers["logging/setLevel"] = f
-}
-
-func (s *DefaultServer) HandleComplete(
-	f CompleteFunc,
-) {
-	s.handlers["completion/complete"] = f
-}
-
-func (s *DefaultServer) HandleNotification(
-	method string,
-	f NotificationFunc,
-) {
-	s.handlers[method] = f
-}
-
-// Default handler implementations
-func (s *DefaultServer) defaultInitialize(
-	ctx context.Context,
-	req mcp.InitializeRequest,
-) (mcp.InitializeResult, error) {
-	return mcp.InitializeResult{
+	result := mcp.InitializeResult{
 		ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
 		ServerInfo: mcp.Implementation{
 			Name:    s.name,
 			Version: s.version,
 		},
-		Capabilities: mcp.ServerCapabilities{},
-	}, nil
-}
-
-func (s *DefaultServer) defaultPing(
-	ctx context.Context,
-	req mcp.PingRequest,
-) (mcp.EmptyResult, error) {
-	return mcp.EmptyResult{}, nil
-}
-
-func (s *DefaultServer) defaultListResources(
-	ctx context.Context,
-	req mcp.ListResourcesRequest,
-) (mcp.ListResourcesResult, error) {
-	return mcp.ListResourcesResult{Resources: []mcp.Resource{}}, nil
-}
-
-func (s *DefaultServer) defaultListResourceTemplates(
-	ctx context.Context,
-	req mcp.ListResourceTemplatesRequest,
-) (mcp.ListResourceTemplatesResult, error) {
-	return mcp.ListResourceTemplatesResult{
-		ResourceTemplates: []mcp.ResourceTemplate{},
-	}, nil
-}
-
-func (s *DefaultServer) defaultReadResource(
-	ctx context.Context,
-	req mcp.ReadResourceRequest,
-) (mcp.ReadResourceResult, error) {
-	return mcp.ReadResourceResult{}, fmt.Errorf("Resource not found")
-}
-
-func (s *DefaultServer) defaultSubscribe(
-	ctx context.Context,
-	req mcp.SubscribeRequest,
-) (mcp.EmptyResult, error) {
-	return mcp.EmptyResult{}, nil
-}
-
-func (s *DefaultServer) defaultUnsubscribe(
-	ctx context.Context,
-	req mcp.UnsubscribeRequest,
-) (mcp.EmptyResult, error) {
-	return mcp.EmptyResult{}, nil
-}
-
-func (s *DefaultServer) defaultListPrompts(
-	ctx context.Context,
-	req mcp.ListPromptsRequest,
-) (mcp.ListPromptsResult, error) {
-	return mcp.ListPromptsResult{Prompts: []mcp.Prompt{}}, nil
-}
-
-func (s *DefaultServer) defaultGetPrompt(
-	ctx context.Context,
-	req mcp.GetPromptRequest,
-) (mcp.GetPromptResult, error) {
-	return mcp.GetPromptResult{}, fmt.Errorf("Prompt not found")
-}
-
-func (s *DefaultServer) defaultListTools(
-	ctx context.Context,
-	req mcp.ListToolsRequest,
-) (mcp.ListToolsResult, error) {
-	return mcp.ListToolsResult{Tools: []mcp.Tool{}}, nil
-}
-
-func (s *DefaultServer) defaultCallTool(
-	ctx context.Context,
-	req mcp.CallToolRequest,
-) (mcp.CallToolResult, error) {
-	return mcp.CallToolResult{}, fmt.Errorf("Tool not found")
-}
-
-func (s *DefaultServer) defaultSetLevel(
-	ctx context.Context,
-	req mcp.SetLevelRequest,
-) (mcp.EmptyResult, error) {
-	return mcp.EmptyResult{}, nil
-}
-
-func (s *DefaultServer) defaultComplete(
-	ctx context.Context,
-	req mcp.CompleteRequest,
-) (mcp.CompleteResult, error) {
-	return mcp.CompleteResult{}, nil
-}
-
-// Helper function to call handlers with proper type assertions
-func callHandler(
-	ctx context.Context,
-	handler interface{},
-	params interface{},
-) (mcp.Result, error) {
-
-	handlerType := fmt.Sprintf("%T", handler)
-	var err error
-
-	var result interface{}
-	switch handlerType {
-	case "server.InitializeFunc":
-		if req, ok := params.(mcp.InitializeRequest); ok {
-			result, err = handler.(InitializeFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for InitializeFunc")
-		}
-
-	case "server.PingFunc":
-		if req, ok := params.(mcp.PingRequest); ok {
-			result, err = handler.(PingFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for PingFunc")
-		}
-
-	case "server.ListResourcesFunc":
-		if req, ok := params.(mcp.ListResourcesRequest); ok {
-			result, err = handler.(ListResourcesFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for ListResourcesFunc")
-		}
-
-	case "server.ListResourceTemplatesFunc":
-		if req, ok := params.(mcp.ListResourceTemplatesRequest); ok {
-			result, err = handler.(ListResourceTemplatesFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for ListResourceTemplatesFunc")
-		}
-	case "server.ReadResourceFunc":
-		if req, ok := params.(mcp.ReadResourceRequest); ok {
-			result, err = handler.(ReadResourceFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for ReadResourceFunc")
-		}
-	case "server.SubscribeFunc":
-		if req, ok := params.(mcp.SubscribeRequest); ok {
-			result, err = handler.(SubscribeFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for SubscribeFunc")
-		}
-	case "server.UnsubscribeFunc":
-		if req, ok := params.(mcp.UnsubscribeRequest); ok {
-			result, err = handler.(UnsubscribeFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for UnsubscribeFunc")
-		}
-	case "server.ListPromptsFunc":
-		if req, ok := params.(mcp.ListPromptsRequest); ok {
-			result, err = handler.(ListPromptsFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for ListPromptsFunc")
-		}
-	case "server.GetPromptFunc":
-		if req, ok := params.(mcp.GetPromptRequest); ok {
-			result, err = handler.(GetPromptFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for GetPromptFunc")
-		}
-	case "server.ListToolsFunc":
-		if req, ok := params.(mcp.ListToolsRequest); ok {
-			result, err = handler.(ListToolsFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for ListToolsFunc")
-		}
-	case "server.CallToolFunc":
-		if req, ok := params.(mcp.CallToolRequest); ok {
-			result, err = handler.(CallToolFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for CallToolFunc")
-		}
-	case "server.SetLevelFunc":
-		if req, ok := params.(mcp.SetLevelRequest); ok {
-			result, err = handler.(SetLevelFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for SetLevelFunc")
-		}
-	case "server.CompleteFunc":
-		if req, ok := params.(mcp.CompleteRequest); ok {
-			result, err = handler.(CompleteFunc)(ctx, req)
-		} else {
-			err = fmt.Errorf("Invalid params for CompleteFunc")
-		}
-	default:
-		return mcp.Result{}, fmt.Errorf("Unknown handler type: %s", handlerType)
+		Capabilities: capabilities,
 	}
 
+	return createResponse(id, result)
+}
+
+func (s *MCPServer) handlePing(
+	id interface{},
+	request mcp.PingRequest,
+) mcp.JSONRPCMessage {
+	return createResponse(id, mcp.EmptyResult{})
+}
+
+func (s *MCPServer) handleListResources(
+	id interface{},
+	request mcp.ListResourcesRequest,
+) mcp.JSONRPCMessage {
+	resources := make([]mcp.Resource, 0, len(s.resources))
+	for uri := range s.resources {
+		resources = append(resources, mcp.Resource{
+			URI: uri,
+		})
+	}
+
+	result := mcp.ListResourcesResult{
+		Resources: resources,
+	}
+	if request.Params.Cursor != "" {
+		result.NextCursor = "" // Handle pagination if needed
+	}
+	return createResponse(id, result)
+}
+
+func (s *MCPServer) handleListResourceTemplates(
+	id interface{},
+	request mcp.ListResourceTemplatesRequest,
+) mcp.
+	JSONRPCMessage {
+	templates := make([]mcp.ResourceTemplate, 0, len(s.resourceTemplates))
+	for uriTemplate, handler := range s.resourceTemplates {
+		template, err := handler()
+		if err != nil {
+			return createErrorResponse(
+				id,
+				mcp.INTERNAL_ERROR,
+				fmt.Sprintf(
+					"Error getting template for %s: %v",
+					uriTemplate,
+					err,
+				),
+			)
+		}
+
+		template.URITemplate = uriTemplate
+		templates = append(templates, template)
+	}
+
+	result := mcp.ListResourceTemplatesResult{
+		ResourceTemplates: templates,
+	}
+	if request.Params.Cursor != "" {
+		result.NextCursor = "" // Handle pagination if needed
+	}
+	return createResponse(id, result)
+}
+
+func (s *MCPServer) handleReadResource(
+	id interface{},
+	request mcp.ReadResourceRequest,
+) mcp.JSONRPCMessage {
+	handler, ok := s.resources[request.Params.URI]
+	if !ok {
+		return createErrorResponse(
+			id,
+			mcp.INVALID_PARAMS,
+			fmt.Sprintf("No handler found for resource URI: %s", request.Params.
+				URI),
+		)
+	}
+
+	contents, err := handler(request.Params.URI)
 	if err != nil {
-		return mcp.Result{}, err
+		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 	}
 
-	// Wrap the result in mcp.Result if it's not already
-	if res, ok := result.(mcp.Result); ok {
-		return res, nil
+	result := mcp.ReadResourceResult{
+		Contents: contents,
 	}
-	return mcp.Result{
-		Meta: map[string]interface{}{
-			"data": result,
+
+	return createResponse(id, result)
+}
+
+func (s *MCPServer) handleListPrompts(
+	id interface{},
+	request mcp.ListPromptsRequest,
+) mcp.JSONRPCMessage {
+	prompts := make([]mcp.Prompt, 0, len(s.prompts))
+	for name := range s.prompts {
+		prompts = append(prompts, mcp.Prompt{
+			Name: name,
+		})
+	}
+
+	result := mcp.ListPromptsResult{
+		Prompts: prompts,
+	}
+	if request.Params.Cursor != "" {
+		result.NextCursor = "" // Handle pagination if needed
+	}
+	return createResponse(id, result)
+}
+
+func (s *MCPServer) handleGetPrompt(
+	id interface{},
+	request mcp.GetPromptRequest,
+) mcp.JSONRPCMessage {
+	handler, ok := s.prompts[request.Params.Name]
+	if !ok {
+		return createErrorResponse(
+			id,
+			mcp.INVALID_PARAMS,
+			fmt.Sprintf("Prompt not found: %s", request.Params.Name),
+		)
+	}
+
+	result, err := handler(request.Params.Name, request.Params.Arguments)
+	if err != nil {
+		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
+	}
+
+	return createResponse(id, result)
+}
+
+func (s *MCPServer) handleListTools(
+	id interface{},
+	request mcp.ListToolsRequest,
+) mcp.JSONRPCMessage {
+	tools := make([]mcp.Tool, 0, len(s.tools))
+	for name := range s.tools {
+		tools = append(tools, mcp.Tool{
+			Name: name,
+			InputSchema: struct {
+				Type       string                 `json:"type"`
+				Properties map[string]interface{} `json:"properties,omitempty"`
+			}{
+				Type: "object",
+			},
+		})
+	}
+
+	result := mcp.ListToolsResult{
+		Tools: tools,
+	}
+	if request.Params.Cursor != "" {
+		result.NextCursor = "" // Handle pagination if needed
+	}
+	return createResponse(id, result)
+}
+
+func (s *MCPServer) handleToolCall(
+	id interface{},
+	request mcp.CallToolRequest,
+) mcp.JSONRPCMessage {
+	handler, ok := s.tools[request.Params.Name]
+	if !ok {
+		return createErrorResponse(
+			id,
+			mcp.INVALID_PARAMS,
+			fmt.Sprintf("Tool not found: %s", request.Params.Name),
+		)
+	}
+
+	result, err := handler(request.Params.Name, request.Params.Arguments)
+	if err != nil {
+		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
+	}
+
+	return createResponse(id, result)
+}
+
+func (s *MCPServer) handleNotification(
+	notification mcp.JSONRPCNotification,
+) mcp.JSONRPCMessage {
+	for _, handler := range s.notifications {
+		handler(notification)
+	}
+	return nil
+}
+
+func createResponse(id interface{}, result interface{}) mcp.JSONRPCMessage {
+	return mcp.JSONRPCResponse{
+		JSONRPC: mcp.JSONRPC_VERSION,
+		ID:      id,
+		Result:  result,
+	}
+}
+
+func createErrorResponse(
+	id interface{},
+	code int,
+	message string,
+) mcp.JSONRPCMessage {
+	return mcp.JSONRPCError{
+		JSONRPC: mcp.JSONRPC_VERSION,
+		ID:      id,
+		Error: struct {
+			Code    int         `json:"code"`
+			Message string      `json:"message"`
+			Data    interface{} `json:"data,omitempty"`
+		}{
+			Code:    code,
+			Message: message,
 		},
-	}, nil
+	}
 }

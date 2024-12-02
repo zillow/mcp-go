@@ -64,9 +64,15 @@ type JSONRPCNotification struct {
 
 // JSONRPCResponse represents a successful (non-error) response to a request.
 type JSONRPCResponse struct {
+	JSONRPC string      `json:"jsonrpc"`
+	ID      RequestId   `json:"id"`
+	Result  interface{} `json:"result"`
+}
+
+// JSONRPCError represents a non-successful (error) response to a request.
+type JSONRPCError struct {
 	JSONRPC string    `json:"jsonrpc"`
 	ID      RequestId `json:"id"`
-	Result  Result    `json:"result,omitempty"`
 	Error   struct {
 		// The error type that occurred.
 		Code int `json:"code"`
@@ -76,7 +82,7 @@ type JSONRPCResponse struct {
 		// Additional information about the error. The value of this member
 		// is defined by the sender (e.g. detailed error information, nested errors etc.).
 		Data interface{} `json:"data,omitempty"`
-	} `json:"error,omitempty"`
+	} `json:"error"`
 }
 
 // Standard JSON-RPC error codes
