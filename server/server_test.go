@@ -440,12 +440,12 @@ func createTestServer() *MCPServer {
 	)
 
 	server.AddResource(
-		"test-resource",
-		func(uri string) ([]interface{}, error) {
+		"resource://testresource",
+		func() ([]interface{}, error) {
 			return []interface{}{
 				mcp.TextResourceContents{
 					ResourceContents: mcp.ResourceContents{
-						URI:      uri,
+						URI:      "resource://testresource",
 						MIMEType: "text/plain",
 					},
 					Text: "test content",
@@ -455,8 +455,11 @@ func createTestServer() *MCPServer {
 	)
 
 	server.AddTool(
-		"test-tool",
-		func(name string, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+		mcp.Tool{
+			Name:        "test-tool",
+			Description: "Test tool",
+		},
+		func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{
 				Content: []interface{}{
 					mcp.TextContent{

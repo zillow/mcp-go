@@ -16,8 +16,8 @@ func main() {
 	)
 
 	// Add calculator tools
-	for name, tool := range calculator.Tools {
-		mcpServer.AddTool(name, tool.Handler)
+	for _, tool := range calculator.Tools {
+		mcpServer.AddTool(tool, calculator.Handlers[tool.Name])
 	}
 
 	// Create and start SSE server

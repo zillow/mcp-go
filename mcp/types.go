@@ -558,10 +558,12 @@ type Tool struct {
 	// A human-readable description of the tool.
 	Description string `json:"description,omitempty"`
 	// A JSON Schema object defining the expected parameters for the tool.
-	InputSchema struct {
-		Type       string                 `json:"type"`
-		Properties map[string]interface{} `json:"properties,omitempty"`
-	} `json:"inputSchema"`
+	InputSchema ToolInputSchema `json:"inputSchema"`
+}
+
+type ToolInputSchema struct {
+	Type       string                 `json:"type"`
+	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 /* Logging */

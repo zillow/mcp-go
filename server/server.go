@@ -13,7 +13,8 @@ type MCPServer struct {
 	resources         map[string]ResourceHandlerFunc
 	resourceTemplates map[string]ResourceTemplateHandlerFunc
 	prompts           map[string]PromptHandlerFunc
-	tools             map[string]ToolHandlerFunc
+	tools             map[string]mcp.Tool
+	toolHandlers      map[string]ToolHandlerFunc
 	notifications     []NotificationHandlerFunc
 	capabilities      serverCapabilities
 }
@@ -40,12 +41,12 @@ type toolCapabilities struct {
 
 type ServerOption func(*MCPServer)
 
-type ResourceHandlerFunc func(uri string) ([]interface{}, error)
+type ResourceHandlerFunc func() ([]interface{}, error)
 type ResourceTemplateHandlerFunc func() (mcp.ResourceTemplate, error)
 
-type PromptHandlerFunc func(name string, arguments map[string]string) (*mcp.GetPromptResult, error)
+type PromptHandlerFunc func(arguments map[string]string) (*mcp.GetPromptResult, error)
 
-type ToolHandlerFunc func(name string, arguments map[string]interface{}) (*mcp.CallToolResult, error)
+type ToolHandlerFunc func(arguments map[string]interface{}) (*mcp.CallToolResult, error)
 type NotificationHandlerFunc func(notification mcp.JSONRPCNotification)
 
 func WithResourceCapabilities(subscribe, listChanged bool) ServerOption {
@@ -87,7 +88,8 @@ func NewMCPServer(
 		resources:         make(map[string]ResourceHandlerFunc),
 		resourceTemplates: make(map[string]ResourceTemplateHandlerFunc),
 		prompts:           make(map[string]PromptHandlerFunc),
-		tools:             make(map[string]ToolHandlerFunc),
+		tools:             make(map[string]mcp.Tool),
+		toolHandlers:      make(map[string]ToolHandlerFunc),
 		name:              name,
 		version:           version,
 	}
@@ -311,11 +313,12 @@ func (s *MCPServer) AddPrompt(name string, handler PromptHandlerFunc) {
 	s.prompts[name] = handler
 }
 
-func (s *MCPServer) AddTool(name string, handler ToolHandlerFunc) {
+func (s *MCPServer) AddTool(tool mcp.Tool, handler ToolHandlerFunc) {
 	if s.capabilities.tools == nil {
 		panic("Tool capabilities not enabled")
 	}
-	s.tools[name] = handler
+	s.tools[tool.Name] = tool
+	s.toolHandlers[tool.Name] = handler
 }
 
 func (s *MCPServer) AddNotificationHandler(
@@ -446,7 +449,7 @@ func (s *MCPServer) handleReadResource(
 		)
 	}
 
-	contents, err := handler(request.Params.URI)
+	contents, err := handler()
 	if err != nil {
 		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 	}
@@ -491,7 +494,7 @@ func (s *MCPServer) handleGetPrompt(
 		)
 	}
 
-	result, err := handler(request.Params.Name, request.Params.Arguments)
+	result, err := handler(request.Params.Arguments)
 	if err != nil {
 		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 	}
@@ -505,15 +508,7 @@ func (s *MCPServer) handleListTools(
 ) mcp.JSONRPCMessage {
 	tools := make([]mcp.Tool, 0, len(s.tools))
 	for name := range s.tools {
-		tools = append(tools, mcp.Tool{
-			Name: name,
-			InputSchema: struct {
-				Type       string                 `json:"type"`
-				Properties map[string]interface{} `json:"properties,omitempty"`
-			}{
-				Type: "object",
-			},
-		})
+		tools = append(tools, s.tools[name])
 	}
 
 	result := mcp.ListToolsResult{
@@ -529,7 +524,7 @@ func (s *MCPServer) handleToolCall(
 	id interface{},
 	request mcp.CallToolRequest,
 ) mcp.JSONRPCMessage {
-	handler, ok := s.tools[request.Params.Name]
+	handler, ok := s.toolHandlers[request.Params.Name]
 	if !ok {
 		return createErrorResponse(
 			id,
@@ -538,7 +533,7 @@ func (s *MCPServer) handleToolCall(
 		)
 	}
 
-	result, err := handler(request.Params.Name, request.Params.Arguments)
+	result, err := handler(request.Params.Arguments)
 	if err != nil {
 		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 	}

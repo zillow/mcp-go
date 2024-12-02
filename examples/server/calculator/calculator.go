@@ -16,27 +16,81 @@ func (e CalculationError) Error() string {
 	return e.Message
 }
 
-type Tool struct {
-	Handler     server.ToolHandlerFunc
-	Description string
+var Handlers = map[string]server.ToolHandlerFunc{
+	"add":      HandleAdd,
+	"subtract": HandleSubtract,
+	"multiply": HandleMultiply,
+	"divide":   HandleDivide,
 }
 
-var Tools = map[string]Tool{
-	"add": {
-		Handler:     HandleAdd,
-		Description: "Add two numbers together",
+var Tools = []mcp.Tool{
+	{
+		Name:        "add",
+		Description: "Add two numbers",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"a": map[string]interface{}{
+					"type":        "number",
+					"description": "First number",
+				},
+				"b": map[string]interface{}{
+					"type":        "number",
+					"description": "Second number",
+				},
+			},
+		},
 	},
-	"subtract": {
-		Handler:     HandleSubtract,
-		Description: "Subtract the second number from the first",
+	{
+		Name:        "subtract",
+		Description: "Subtract two numbers",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"a": map[string]interface{}{
+					"type":        "number",
+					"description": "First number",
+				},
+				"b": map[string]interface{}{
+					"type":        "number",
+					"description": "Second number",
+				},
+			},
+		},
 	},
-	"multiply": {
-		Handler:     HandleMultiply,
-		Description: "Multiply two numbers together",
+	{
+		Name:        "multiply",
+		Description: "Multiply two numbers",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"a": map[string]interface{}{
+					"type":        "number",
+					"description": "First number",
+				},
+				"b": map[string]interface{}{
+					"type":        "number",
+					"description": "Second number",
+				},
+			},
+		},
 	},
-	"divide": {
-		Handler:     HandleDivide,
-		Description: "Divide the first number by the second",
+	{
+		Name:        "divide",
+		Description: "Divide two numbers",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"a": map[string]interface{}{
+					"type":        "number",
+					"description": "First number (dividend)",
+				},
+				"b": map[string]interface{}{
+					"type":        "number",
+					"description": "Second number (divisor)",
+				},
+			},
+		},
 	},
 }
 
@@ -70,7 +124,6 @@ func formatResult(result float64) *mcp.CallToolResult {
 }
 
 func HandleAdd(
-	name string,
 	args map[string]interface{},
 ) (*mcp.CallToolResult, error) {
 	a, b, err := extractArgs(args)
@@ -81,7 +134,6 @@ func HandleAdd(
 }
 
 func HandleSubtract(
-	name string,
 	args map[string]interface{},
 ) (*mcp.CallToolResult, error) {
 	a, b, err := extractArgs(args)
@@ -92,7 +144,6 @@ func HandleSubtract(
 }
 
 func HandleMultiply(
-	name string,
 	args map[string]interface{},
 ) (*mcp.CallToolResult, error) {
 	a, b, err := extractArgs(args)
@@ -103,7 +154,6 @@ func HandleMultiply(
 }
 
 func HandleDivide(
-	name string,
 	args map[string]interface{},
 ) (*mcp.CallToolResult, error) {
 	a, b, err := extractArgs(args)
