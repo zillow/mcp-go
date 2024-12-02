@@ -1,11 +1,104 @@
-# MCP-Go
+<!-- omit in toc -->
+# MCP Go 🚀
 
-A Go implementation of the Model Context Protocol (MCP), enabling seamless integration between LLM applications and external data sources and tools.
+<div align="center">
 
-## About MCP
+<strong>A Go implementation of the Model Context Protocol (MCP), enabling seamless integration between LLM applications and external data sources and tools.</strong>
 
-The Model Context Protocol (MCP) is an open protocol that enables seamless integration between LLM applications and external data sources and tools.
-Learn more at [modelcontextprotocol.io](https://modelcontextprotocol.io/) and view the specification at [spec.modelcontextprotocol.io](https://spec.modelcontextprotocol.io/).
+</div>
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/mark3labs/mcp-go/mcp"
+    "github.com/mark3labs/mcp-go/server"
+)
+
+func main() {
+    mcp := server.NewMCPServer(
+        "Demo 🚀",
+        "1.0.0",
+        server.WithToolCapabilities(true),
+    )
+
+    mcp.AddTool(mcp.Tool{
+        Name:        "add",
+        Description: "Add two numbers",
+        InputSchema: mcp.ToolInputSchema{
+            Type: "object",
+            Properties: map[string]interface{}{
+                "a": map[string]interface{}{
+                    "type":        "number",
+                    "description": "First number",
+                },
+                "b": map[string]interface{}{
+                    "type":        "number",
+                    "description": "Second number",
+                },
+            },
+        },
+    }, addHandler)
+
+    if err := server.ServeStdio(mcp); err != nil {
+        fmt.Printf("Server error: %v\n", err)
+    }
+}
+
+func addHandler(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+    a, ok1 := arguments["a"].(float64)
+    b, ok2 := arguments["b"].(float64)
+    if !ok1 || !ok2 {
+        return nil, fmt.Errorf("invalid number arguments")
+    }
+
+    sum := int(a) + int(b)
+
+    return &mcp.CallToolResult{
+        Content: []interface{}{
+            mcp.TextContent{
+                Type: "text",
+                Text: fmt.Sprintf("The sum of %d and %d is %d", int(a), int(b), sum),
+            },
+        },
+    }, nil
+}
+```
+
+That's it!
+
+MCP Go handles all the complex protocol details and server management, so you can focus on building great tools. It aims to be high-level and easy to use.
+
+### Key features:
+* **Fast**: High-level interface means less code and faster development
+* **Simple**: Build MCP servers with minimal boilerplate
+* **Complete***: MCP Go aims to provide a full implementation of the core MCP specification
+
+(\*emphasis on *aims*)
+
+🚨 🚧 🏗️ *MCP Go is under active development, as is the MCP specification itself. Core features are working but some advanced capabilities are still in progress.* 
+
+
+<!-- omit in toc -->
+## Table of Contents
+
+- [Installation](#installation)
+- [Quickstart](#quickstart)
+- [What is MCP?](#what-is-mcp)
+- [Core Concepts](#core-concepts)
+  - [Server](#server)
+  - [Resources](#resources)
+  - [Tools](#tools)
+  - [Prompts](#prompts)
+- [Examples](#examples)
+- [Contributing](#contributing)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation-1)
+  - [Testing](#testing)
+  - [Opening a Pull Request](#opening-a-pull-request)
 
 ## Installation
 
@@ -13,344 +106,131 @@ Learn more at [modelcontextprotocol.io](https://modelcontextprotocol.io/) and vi
 go get github.com/mark3labs/mcp-go
 ```
 
-## Creating a Server
+## Quickstart
+
+Let's create a simple MCP server that exposes a calculator tool and some data:
+
 ```go
-package main
+// TODO
+```
+## What is MCP?
 
-import (
-	"context"
-	"fmt"
-	"log"
-	"os"
+The [Model Context Protocol (MCP)](https://modelcontextprotocol.io) lets you build servers that expose data and functionality to LLM applications in a secure, standardized way. Think of it like a web API, but specifically designed for LLM interactions. MCP servers can:
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
-)
+- Expose data through **Resources** (think of these sort of like GET endpoints; they are used to load information into the LLM's context)
+- Provide functionality through **Tools** (sort of like POST endpoints; they are used to execute code or otherwise produce a side effect)
+- Define interaction patterns through **Prompts** (reusable templates for LLM interactions)
+- And more!
 
-// CalculationError represents an error during calculation
-type CalculationError struct {
-	Message string
-}
 
-func (e CalculationError) Error() string {
-	return e.Message
-}
+## Core Concepts
 
-// Calculator implements basic arithmetic operations
-type Calculator struct {
-	server *server.DefaultServer
-}
 
-// NewCalculator creates a new calculator server
-func NewCalculator() *Calculator {
-	s := server.NewDefaultServer("calculator", "1.0.0")
-	calc := &Calculator{server: s}
+### Server
 
-	// Register calculator tools
-	s.HandleCallTool(calc.handleToolCall)
-	s.HandleListTools(calc.handleListTools)
+The server is your core interface to the MCP protocol. It handles connection management, protocol compliance, and message routing:
 
-	return calc
-}
-
-func (c *Calculator) handleListTools(
-	ctx context.Context,
-	cursor *string,
-) (*mcp.ListToolsResult, error) {
-	return &mcp.ListToolsResult{
-		Tools: []mcp.Tool{
-			{
-				Name:        "add",
-				Description: "Add two numbers",
-				InputSchema: mcp.ToolInputSchema{
-					Type: "object",
-					Properties: map[string]interface{}{
-						"a": map[string]interface{}{
-							"type":        "number",
-							"description": "First number",
-						},
-						"b": map[string]interface{}{
-							"type":        "number",
-							"description": "Second number",
-						},
-					},
-				},
-			},
-			{
-				Name:        "subtract",
-				Description: "Subtract two numbers",
-				InputSchema: mcp.ToolInputSchema{
-					Type: "object",
-					Properties: map[string]interface{}{
-						"a": map[string]interface{}{
-							"type":        "number",
-							"description": "First number",
-						},
-						"b": map[string]interface{}{
-							"type":        "number",
-							"description": "Second number",
-						},
-					},
-				},
-			},
-			{
-				Name:        "multiply",
-				Description: "Multiply two numbers",
-				InputSchema: mcp.ToolInputSchema{
-					Type: "object",
-					Properties: map[string]interface{}{
-						"a": map[string]interface{}{
-							"type":        "number",
-							"description": "First number",
-						},
-						"b": map[string]interface{}{
-							"type":        "number",
-							"description": "Second number",
-						},
-					},
-				},
-			},
-			{
-				Name:        "divide",
-				Description: "Divide two numbers",
-				InputSchema: mcp.ToolInputSchema{
-					Type: "object",
-					Properties: map[string]interface{}{
-						"a": map[string]interface{}{
-							"type":        "number",
-							"description": "First number (dividend)",
-						},
-						"b": map[string]interface{}{
-							"type":        "number",
-							"description": "Second number (divisor)",
-						},
-					},
-				},
-			},
-		},
-	}, nil
-}
-
-func (c *Calculator) handleToolCall(
-	ctx context.Context,
-	name string,
-	args map[string]interface{},
-) (*mcp.CallToolResult, error) {
-	// Extract arguments
-	a, ok := args["a"].(float64)
-	if !ok {
-		return nil, &CalculationError{Message: "parameter 'a' must be a number"}
-	}
-	b, ok := args["b"].(float64)
-	if !ok {
-		return nil, &CalculationError{Message: "parameter 'b' must be a number"}
-	}
-
-	var result float64
-
-	switch name {
-	case "add":
-		result = a + b
-	case "subtract":
-		result = a - b
-	case "multiply":
-		result = a * b
-	case "divide":
-		if b == 0 {
-			return nil, &CalculationError{Message: "division by zero"}
-		}
-		result = a / b
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", name)
-	}
-
-	// Create response
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			mcp.TextContent{
-				Type: "text",
-				Text: fmt.Sprintf("%.2f", result),
-			},
-		},
-	}, nil
-}
-
-func (c *Calculator) Serve() error {
-	return server.ServeStdio(c.server)
-}
-
-func main() {
-	calc := NewCalculator()
-
-	if err := calc.Serve(); err != nil {
-		log.Printf("Server error: %v\n", err)
-		os.Exit(1)
-	}
-}
+```go
+// TODO
 ```
 
-## Creating a Client
+### Resources
+
+Resources are how you expose data to LLMs. They're similar to GET endpoints in a REST API - they provide data but shouldn't perform significant computation or have side effects. Some examples:
+
+- File contents
+- Database schemas
+- API responses
+- System information
+
+Resources can be static:
 ```go
-package main
-
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
-	"time"
-
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
-)
-
-func main() {
-	// Create a new client instance
-	// Using npx to run the filesystem server with /tmp as the only allowed directory
-	c, err := client.NewStdioMCPClient(
-		"npx",
-		"-y",
-		"@modelcontextprotocol/server-filesystem",
-		"/tmp",
-	)
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
-	defer c.Close()
-
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Initialize the client
-	fmt.Println("Initializing client...")
-	initResult, err := c.Initialize(
-		ctx,
-		mcp.ClientCapabilities{},
-		mcp.Implementation{
-			Name:    "example-client",
-			Version: "1.0.0",
-		},
-		"1.0",
-	)
-	if err != nil {
-		log.Fatalf("Failed to initialize: %v", err)
-	}
-	fmt.Printf(
-		"Initialized with server: %s %s\n\n",
-		initResult.ServerInfo.Name,
-		initResult.ServerInfo.Version,
-	)
-
-	// List Tools
-	fmt.Println("Listing available tools...")
-	tools, err := c.ListTools(ctx, nil)
-	if err != nil {
-		log.Fatalf("Failed to list tools: %v", err)
-	}
-	for _, tool := range tools.Tools {
-		fmt.Printf("- %s: %s\n", tool.Name, tool.Description)
-	}
-	fmt.Println()
-
-	// List allowed directories
-	fmt.Println("Listing allowed directories...")
-	result, err := c.CallTool(ctx, "list_allowed_directories", nil)
-	if err != nil {
-		log.Fatalf("Failed to list allowed directories: %v", err)
-	}
-	printToolResult(result)
-	fmt.Println()
-
-	// List /tmp
-	fmt.Println("Listing /tmp directory...")
-	result, err = c.CallTool(ctx, "list_directory", map[string]interface{}{
-		"path": "/tmp",
-	})
-	if err != nil {
-		log.Fatalf("Failed to list directory: %v", err)
-	}
-	printToolResult(result)
-	fmt.Println()
-
-	// Create mcp directory
-	fmt.Println("Creating /tmp/mcp directory...")
-	result, err = c.CallTool(ctx, "create_directory", map[string]interface{}{
-		"path": "/tmp/mcp",
-	})
-	if err != nil {
-		log.Fatalf("Failed to create directory: %v", err)
-	}
-	printToolResult(result)
-	fmt.Println()
-
-	// Create hello.txt
-	fmt.Println("Creating /tmp/mcp/hello.txt...")
-	result, err = c.CallTool(ctx, "write_file", map[string]interface{}{
-		"path":    "/tmp/mcp/hello.txt",
-		"content": "Hello World",
-	})
-	if err != nil {
-		log.Fatalf("Failed to create file: %v", err)
-	}
-	printToolResult(result)
-	fmt.Println()
-
-	// Verify file contents
-	fmt.Println("Reading /tmp/mcp/hello.txt...")
-	result, err = c.CallTool(ctx, "read_file", map[string]interface{}{
-		"path": "/tmp/mcp/hello.txt",
-	})
-	if err != nil {
-		log.Fatalf("Failed to read file: %v", err)
-	}
-	printToolResult(result)
-
-	// Get file info
-	fmt.Println("Getting info for /tmp/mcp/hello.txt...")
-	result, err = c.CallTool(ctx, "get_file_info", map[string]interface{}{
-		"path": "/tmp/mcp/hello.txt",
-	})
-	if err != nil {
-		log.Fatalf("Failed to read file: %v", err)
-	}
-	printToolResult(result)
-}
-
-// Helper function to print tool results
-func printToolResult(result *mcp.CallToolResult) {
-	for _, content := range result.Content {
-		if textContent, ok := content.(mcp.TextContent); ok {
-			fmt.Println(textContent.Text)
-		} else {
-			jsonBytes, _ := json.MarshalIndent(content, "", "  ")
-			fmt.Println(string(jsonBytes))
-		}
-	}
-}
+// TODO
 ```
+
+### Tools
+
+Tools let LLMs take actions through your server. Unlike resources, tools are expected to perform computation and have side effects. They're similar to POST endpoints in a REST API.
+
+Simple calculation example:
+```go
+// TODO
+```
+
+HTTP request example:
+```go
+// TODO
+```
+
+### Prompts
+
+Prompts are reusable templates that help LLMs interact with your server effectively. They're like "best practices" encoded into your server. A prompt can be as simple as a string:
+
+```go
+// TODO
+```
+
+Or a more structured sequence of messages:
+```go
+// TODO
+```
+
+## Examples
+
+For examples, see the `examples/` directory.
+
 
 ## Contributing
 
-I'm not an expert and this is my first Go library, so contributions are very welcome! Whether it's:
+<details>
 
-- Improving the code quality
-- Adding features
-- Fixing bugs
-- Writing documentation
-- Adding examples
+<summary><h3>Open Developer Guide</h3></summary>
 
-Feel free to open issues and PRs. Let's make this library better together.
+### Prerequisites
 
-## License
+Go version >= 1.23
 
-MIT License
+### Installation
 
-## Other Sdks
+Create a fork of this repository, then clone it:
 
-### Official
-- [typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk)
-- [python-sdk](https://github.com/modelcontextprotocol/python-sdk)
+```bash
+git clone https://github.com/mark3labs/mcp-go.git
+cd mcp-go
+```
 
-### Community
-- [rust-sdk](https://github.com/AntigmaLabs/mcp-sdk)
+### Testing
+
+Please make sure to test any new functionality. Your tests should be simple and atomic and anticipate change rather than cement complex patterns.
+
+Run tests from the root directory:
+
+```bash
+go test -v './...'
+```
+
+### Opening a Pull Request
+
+Fork the repository and create a new branch:
+
+```bash
+git checkout -b my-branch
+```
+
+Make your changes and commit them:
+
+
+```bash
+git add . && git commit -m "My changes"
+```
+
+Push your changes to your fork:
+
+
+```bash
+git push origin my-branch
+```
+
+Feel free to reach out in a GitHub issue or discussion if you have any questions!
+
+</details>
