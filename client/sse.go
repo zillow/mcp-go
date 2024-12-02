@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -27,6 +28,7 @@ type SSEMCPClient struct {
 	initialized   bool
 	notifications []func(mcp.JSONRPCNotification)
 	notifyMu      sync.RWMutex
+	endpointChan  chan struct{}
 }
 
 func NewSSEMCPClient(baseURL string) (*SSEMCPClient, error) {
@@ -36,17 +38,22 @@ func NewSSEMCPClient(baseURL string) (*SSEMCPClient, error) {
 	}
 
 	return &SSEMCPClient{
-		baseURL:    parsedURL,
-		httpClient: &http.Client{},
-		responses:  make(map[int64]chan *json.RawMessage),
-		done:       make(chan struct{}),
+		baseURL:      parsedURL,
+		httpClient:   &http.Client{},
+		responses:    make(map[int64]chan *json.RawMessage),
+		done:         make(chan struct{}),
+		endpointChan: make(chan struct{}),
 	}, nil
 }
 
 func (c *SSEMCPClient) Start(ctx context.Context) error {
+
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL.String(), nil)
+
 	if err != nil {
+
 		return fmt.Errorf("failed to create request: %w", err)
+
 	}
 
 	req.Header.Set("Accept", "text/event-stream")
@@ -64,6 +71,18 @@ func (c *SSEMCPClient) Start(ctx context.Context) error {
 	}
 
 	go c.readSSE(resp.Body)
+
+	// Wait for the endpoint to be received
+
+	select {
+	case <-c.endpointChan:
+		// Endpoint received, proceed
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled while waiting for endpoint")
+	case <-time.After(30 * time.Second): // Add a timeout
+		return fmt.Errorf("timeout waiting for endpoint")
+	}
+
 	return nil
 }
 
@@ -116,6 +135,7 @@ func (c *SSEMCPClient) handleSSEEvent(event, data string) {
 			return
 		}
 		c.endpoint = endpoint
+		close(c.endpointChan)
 
 	case "message":
 		var baseMessage struct {

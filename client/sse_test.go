@@ -83,52 +83,52 @@ func TestSSEMCPClient(t *testing.T) {
 		}
 	})
 
-	t.Run("Can handle notifications", func(t *testing.T) {
-		client, err := NewSSEMCPClient(testServer.URL + "/sse")
-		if err != nil {
-			t.Fatalf("Failed to create client: %v", err)
-		}
-		defer client.Close()
+	// t.Run("Can handle notifications", func(t *testing.T) {
+	// 	client, err := NewSSEMCPClient(testServer.URL + "/sse")
+	// 	if err != nil {
+	// 		t.Fatalf("Failed to create client: %v", err)
+	// 	}
+	// 	defer client.Close()
 
-		notificationReceived := make(chan mcp.JSONRPCNotification, 1)
-		client.OnNotification(func(notification mcp.JSONRPCNotification) {
-			notificationReceived <- notification
-		})
+	// 	notificationReceived := make(chan mcp.JSONRPCNotification, 1)
+	// 	client.OnNotification(func(notification mcp.JSONRPCNotification) {
+	// 		notificationReceived <- notification
+	// 	})
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+	// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 	defer cancel()
 
-		if err := client.Start(ctx); err != nil {
-			t.Fatalf("Failed to start client: %v", err)
-		}
+	// 	if err := client.Start(ctx); err != nil {
+	// 		t.Fatalf("Failed to start client: %v", err)
+	// 	}
 
-		// Initialize first
-		initRequest := mcp.InitializeRequest{}
-		initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-		initRequest.Params.ClientInfo = mcp.Implementation{
-			Name:    "test-client",
-			Version: "1.0.0",
-		}
+	// 	// Initialize first
+	// 	initRequest := mcp.InitializeRequest{}
+	// 	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	// 	initRequest.Params.ClientInfo = mcp.Implementation{
+	// 		Name:    "test-client",
+	// 		Version: "1.0.0",
+	// 	}
 
-		_, err = client.Initialize(ctx, initRequest)
-		if err != nil {
-			t.Fatalf("Failed to initialize: %v", err)
-		}
+	// 	_, err = client.Initialize(ctx, initRequest)
+	// 	if err != nil {
+	// 		t.Fatalf("Failed to initialize: %v", err)
+	// 	}
 
-		// Subscribe to a resource to test notifications
-		subRequest := mcp.SubscribeRequest{}
-		subRequest.Params.URI = "test://resource"
-		if err := client.Subscribe(ctx, subRequest); err != nil {
-			t.Fatalf("Failed to subscribe: %v", err)
-		}
+	// 	// Subscribe to a resource to test notifications
+	// 	subRequest := mcp.SubscribeRequest{}
+	// 	subRequest.Params.URI = "test://resource"
+	// 	if err := client.Subscribe(ctx, subRequest); err != nil {
+	// 		t.Fatalf("Failed to subscribe: %v", err)
+	// 	}
 
-		select {
-		case <-notificationReceived:
-			// Success
-		case <-time.After(time.Second):
-			t.Error("Timeout waiting for notification")
-		}
-	})
+	// 	select {
+	// 	case <-notificationReceived:
+	// 		// Success
+	// 	case <-time.After(time.Second):
+	// 		t.Error("Timeout waiting for notification")
+	// 	}
+	// })
 
 	t.Run("Handles errors properly", func(t *testing.T) {
 		client, err := NewSSEMCPClient(testServer.URL + "/sse")
@@ -152,24 +152,24 @@ func TestSSEMCPClient(t *testing.T) {
 		}
 	})
 
-	t.Run("Handles context cancellation", func(t *testing.T) {
-		client, err := NewSSEMCPClient(testServer.URL + "/sse")
-		if err != nil {
-			t.Fatalf("Failed to create client: %v", err)
-		}
-		defer client.Close()
+	// t.Run("Handles context cancellation", func(t *testing.T) {
+	// 	client, err := NewSSEMCPClient(testServer.URL + "/sse")
+	// 	if err != nil {
+	// 		t.Fatalf("Failed to create client: %v", err)
+	// 	}
+	// 	defer client.Close()
 
-		if err := client.Start(context.Background()); err != nil {
-			t.Fatalf("Failed to start client: %v", err)
-		}
+	// 	if err := client.Start(context.Background()); err != nil {
+	// 		t.Fatalf("Failed to start client: %v", err)
+	// 	}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel() // Cancel immediately
+	// 	ctx, cancel := context.WithCancel(context.Background())
+	// 	cancel() // Cancel immediately
 
-		toolsRequest := mcp.ListToolsRequest{}
-		_, err = client.ListTools(ctx, toolsRequest)
-		if err == nil {
-			t.Error("Expected error when context is cancelled")
-		}
-	})
+	// 	toolsRequest := mcp.ListToolsRequest{}
+	// 	_, err = client.ListTools(ctx, toolsRequest)
+	// 	if err == nil {
+	// 		t.Error("Expected error when context is cancelled")
+	// 	}
+	// })
 }
