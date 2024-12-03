@@ -1,8 +1,6 @@
 package calculator
 
 import (
-	"fmt"
-
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -24,74 +22,50 @@ var Handlers = map[string]server.ToolHandlerFunc{
 }
 
 var Tools = []mcp.Tool{
-	{
-		Name:        "add",
-		Description: "Add two numbers",
-		InputSchema: mcp.ToolInputSchema{
-			Type: "object",
-			Properties: map[string]interface{}{
-				"a": map[string]interface{}{
-					"type":        "number",
-					"description": "First number",
-				},
-				"b": map[string]interface{}{
-					"type":        "number",
-					"description": "Second number",
-				},
-			},
-		},
-	},
-	{
-		Name:        "subtract",
-		Description: "Subtract two numbers",
-		InputSchema: mcp.ToolInputSchema{
-			Type: "object",
-			Properties: map[string]interface{}{
-				"a": map[string]interface{}{
-					"type":        "number",
-					"description": "First number",
-				},
-				"b": map[string]interface{}{
-					"type":        "number",
-					"description": "Second number",
-				},
-			},
-		},
-	},
-	{
-		Name:        "multiply",
-		Description: "Multiply two numbers",
-		InputSchema: mcp.ToolInputSchema{
-			Type: "object",
-			Properties: map[string]interface{}{
-				"a": map[string]interface{}{
-					"type":        "number",
-					"description": "First number",
-				},
-				"b": map[string]interface{}{
-					"type":        "number",
-					"description": "Second number",
-				},
-			},
-		},
-	},
-	{
-		Name:        "divide",
-		Description: "Divide two numbers",
-		InputSchema: mcp.ToolInputSchema{
-			Type: "object",
-			Properties: map[string]interface{}{
-				"a": map[string]interface{}{
-					"type":        "number",
-					"description": "First number (dividend)",
-				},
-				"b": map[string]interface{}{
-					"type":        "number",
-					"description": "Second number (divisor)",
-				},
-			},
-		},
-	},
+	mcp.NewTool("add",
+		mcp.WithDescription("Add two numbers"),
+		mcp.WithNumber("a",
+			mcp.Required(),
+			mcp.Description("First number"),
+		),
+		mcp.WithNumber("b",
+			mcp.Required(),
+			mcp.Description("Second number"),
+		),
+	),
+	mcp.NewTool("subtract",
+		mcp.WithDescription("Subtract two numbers"),
+		mcp.WithNumber("a",
+			mcp.Required(),
+			mcp.Description("First number"),
+		),
+		mcp.WithNumber("b",
+			mcp.Required(),
+			mcp.Description("Second number"),
+		),
+	),
+	mcp.NewTool("multiply",
+		mcp.WithDescription("Multiply two numbers"),
+		mcp.WithNumber("a",
+			mcp.Required(),
+			mcp.Description("First number"),
+		),
+		mcp.WithNumber("b",
+			mcp.Required(),
+			mcp.Description("Second number"),
+		),
+	),
+	mcp.NewTool("divide",
+		mcp.WithDescription("Divide two numbers"),
+		mcp.WithNumber("a",
+			mcp.Required(),
+			mcp.Description("First number (dividend)"),
+		),
+		mcp.WithNumber("b",
+			mcp.Required(),
+			mcp.Description("Second number (divisor)"),
+		),
+	),
 }
 
 // Helper function to extract and validate number arguments
@@ -111,18 +85,6 @@ func extractArgs(args map[string]interface{}) (float64, float64, error) {
 	return a, b, nil
 }
 
-// Helper function to format result
-func formatResult(result float64) *mcp.CallToolResult {
-	return &mcp.CallToolResult{
-		Content: []interface{}{
-			mcp.TextContent{
-				Type: "text",
-				Text: fmt.Sprintf("%.2f", result),
-			},
-		},
-	}
-}
-
 func HandleAdd(
 	args map[string]interface{},
 ) (*mcp.CallToolResult, error) {
@@ -130,7 +92,7 @@ func HandleAdd(
 	if err != nil {
 		return nil, err
 	}
-	return formatResult(a + b), nil
+	return mcp.FormatNumberResult(a + b), nil
 }
 
 func HandleSubtract(
@@ -140,7 +102,7 @@ func HandleSubtract(
 	if err != nil {
 		return nil, err
 	}
-	return formatResult(a - b), nil
+	return mcp.FormatNumberResult(a - b), nil
 }
 
 func HandleMultiply(
@@ -150,7 +112,7 @@ func HandleMultiply(
 	if err != nil {
 		return nil, err
 	}
-	return formatResult(a * b), nil
+	return mcp.FormatNumberResult(a * b), nil
 }
 
 func HandleDivide(
@@ -163,5 +125,5 @@ func HandleDivide(
 	if b == 0 {
 		return nil, &CalculationError{Message: "division by zero"}
 	}
-	return formatResult(a / b), nil
+	return mcp.FormatNumberResult(a / b), nil
 }

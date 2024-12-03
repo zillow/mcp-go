@@ -19,52 +19,38 @@ import (
 )
 
 func main() {
-    mcp := server.NewMCPServer(
+    // Create MCP server
+    s := server.NewMCPServer(
         "Demo 🚀",
         "1.0.0",
         server.WithToolCapabilities(true),
     )
 
-    mcp.AddTool(mcp.Tool{
-        Name:        "add",
-        Description: "Add two numbers",
-        InputSchema: mcp.ToolInputSchema{
-            Type: "object",
-            Properties: map[string]interface{}{
-                "a": map[string]interface{}{
-                    "type":        "number",
-                    "description": "First number",
-                },
-                "b": map[string]interface{}{
-                    "type":        "number",
-                    "description": "Second number",
-                },
-            },
-        },
-    }, addHandler)
+    // Add tool
+    tool := mcp.NewTool("hello_world",
+        mcp.WithDescription("Say hello to someone"),
+        mcp.WithString("name",
+            mcp.Required(),
+            mcp.Description("Name of the person to greet"),
+        ),
+    )
 
-    if err := server.ServeStdio(mcp); err != nil {
+    // Add tool handler
+    s.AddTool(tool, helloHandler)
+
+    // Start the stdio server
+    if err := server.ServeStdio(s); err != nil {
         fmt.Printf("Server error: %v\n", err)
     }
 }
 
-func addHandler(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-    a, ok1 := arguments["a"].(float64)
-    b, ok2 := arguments["b"].(float64)
-    if !ok1 || !ok2 {
-        return nil, fmt.Errorf("invalid number arguments")
+func helloHandler(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+    name, ok := arguments["name"].(string)
+    if !ok {
+        return mcp.NewToolResultError("name must be a string"), nil
     }
 
-    sum := int(a) + int(b)
-
-    return &mcp.CallToolResult{
-        Content: []interface{}{
-            mcp.TextContent{
-                Type: "text",
-                Text: fmt.Sprintf("The sum of %d and %d is %d", int(a), int(b), sum),
-            },
-        },
-    }, nil
+    return mcp.NewToolResultText(fmt.Sprintf("Hello, %s!", name)), nil
 }
 ```
 

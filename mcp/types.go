@@ -564,6 +564,7 @@ type Tool struct {
 type ToolInputSchema struct {
 	Type       string                 `json:"type"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
+	Required   []string               `json:"required,omitempty"`
 }
 
 /* Logging */

@@ -1,5 +1,7 @@
 package mcp
 
+import "fmt"
+
 // ClientRequest types
 var _ ClientRequest = &PingRequest{}
 var _ ClientRequest = &InitializeRequest{}
@@ -187,24 +189,6 @@ func NewResource(uri, name, description, mimeType string) Resource {
 	}
 }
 
-// Helper function to create a new Tool
-func NewTool(
-	name, description string,
-	inputSchema map[string]interface{},
-) Tool {
-	return Tool{
-		Name:        name,
-		Description: description,
-		InputSchema: struct {
-			Type       string                 `json:"type"`
-			Properties map[string]interface{} `json:"properties,omitempty"`
-		}{
-			Type:       "object",
-			Properties: inputSchema,
-		},
-	}
-}
-
 // Helper function to create a new Prompt
 func NewPrompt(name, description string, arguments []PromptArgument) Prompt {
 	return Prompt{
@@ -245,4 +229,157 @@ func NewEmbeddedResource(resource ResourceContents) EmbeddedResource {
 		Type:     "resource",
 		Resource: resource,
 	}
+}
+
+// NewToolResultText creates a new CallToolResult with a text content
+func NewToolResultText(text string) *CallToolResult {
+	return &CallToolResult{
+		Content: []interface{}{
+			TextContent{
+				Type: "text",
+				Text: text,
+			},
+		},
+	}
+}
+
+// NewToolResultError creates a new CallToolResult that indicates an error
+func NewToolResultError(errText string) *CallToolResult {
+	return &CallToolResult{
+		Content: []interface{}{
+			TextContent{
+				Type: "text",
+				Text: errText,
+			},
+		},
+		IsError: true,
+	}
+}
+
+// NewToolResultImage creates a new CallToolResult with both text and image content
+func NewToolResultImage(text, imageData, mimeType string) *CallToolResult {
+	return &CallToolResult{
+		Content: []interface{}{
+			TextContent{
+				Type: "text",
+				Text: text,
+			},
+			ImageContent{
+				Type:     "image",
+				Data:     imageData,
+				MIMEType: mimeType,
+			},
+		},
+	}
+}
+
+// NewToolResultResource creates a new CallToolResult with an embedded resource
+func NewToolResultResource(
+	text string,
+	resource ResourceContents,
+) *CallToolResult {
+	return &CallToolResult{
+		Content: []interface{}{
+			TextContent{
+				Type: "text",
+				Text: text,
+			},
+			EmbeddedResource{
+				Type:     "resource",
+				Resource: resource,
+			},
+		},
+	}
+}
+
+// NewListResourcesResult creates a new ListResourcesResult
+func NewListResourcesResult(
+	resources []Resource,
+	nextCursor Cursor,
+) *ListResourcesResult {
+	return &ListResourcesResult{
+		PaginatedResult: PaginatedResult{
+			NextCursor: nextCursor,
+		},
+		Resources: resources,
+	}
+}
+
+// NewListResourceTemplatesResult creates a new ListResourceTemplatesResult
+func NewListResourceTemplatesResult(
+	templates []ResourceTemplate,
+	nextCursor Cursor,
+) *ListResourceTemplatesResult {
+	return &ListResourceTemplatesResult{
+		PaginatedResult: PaginatedResult{
+			NextCursor: nextCursor,
+		},
+		ResourceTemplates: templates,
+	}
+}
+
+// NewReadResourceResult creates a new ReadResourceResult with text content
+func NewReadResourceResult(text string) *ReadResourceResult {
+	return &ReadResourceResult{
+		Contents: []interface{}{
+			TextResourceContents{
+				ResourceContents: ResourceContents{},
+				Text:             text,
+			},
+		},
+	}
+}
+
+// NewListPromptsResult creates a new ListPromptsResult
+func NewListPromptsResult(
+	prompts []Prompt,
+	nextCursor Cursor,
+) *ListPromptsResult {
+	return &ListPromptsResult{
+		PaginatedResult: PaginatedResult{
+			NextCursor: nextCursor,
+		},
+		Prompts: prompts,
+	}
+}
+
+// NewGetPromptResult creates a new GetPromptResult
+func NewGetPromptResult(
+	description string,
+	messages []PromptMessage,
+) *GetPromptResult {
+	return &GetPromptResult{
+		Description: description,
+		Messages:    messages,
+	}
+}
+
+// NewListToolsResult creates a new ListToolsResult
+func NewListToolsResult(tools []Tool, nextCursor Cursor) *ListToolsResult {
+	return &ListToolsResult{
+		PaginatedResult: PaginatedResult{
+			NextCursor: nextCursor,
+		},
+		Tools: tools,
+	}
+}
+
+// NewInitializeResult creates a new InitializeResult
+func NewInitializeResult(
+	protocolVersion string,
+	capabilities ServerCapabilities,
+	serverInfo Implementation,
+	instructions string,
+) *InitializeResult {
+	return &InitializeResult{
+		ProtocolVersion: protocolVersion,
+		Capabilities:    capabilities,
+		ServerInfo:      serverInfo,
+		Instructions:    instructions,
+	}
+}
+
+// Helper for formatting numbers in tool results
+func FormatNumberResult(value float64) *CallToolResult {
+	return NewToolResultText(fmt.Sprintf("%.2f", value))
 }
