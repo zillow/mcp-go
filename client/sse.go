@@ -29,6 +29,7 @@ type SSEMCPClient struct {
 	notifications []func(mcp.JSONRPCNotification)
 	notifyMu      sync.RWMutex
 	endpointChan  chan struct{}
+	capabilities  mcp.ServerCapabilities
 }
 
 func NewSSEMCPClient(baseURL string) (*SSEMCPClient, error) {
@@ -291,6 +292,40 @@ func (c *SSEMCPClient) Initialize(
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
+
+	// Store capabilities
+	c.capabilities = result.Capabilities
+
+	// Send initialized notification
+	notification := mcp.JSONRPCNotification{
+		JSONRPC: mcp.JSONRPC_VERSION,
+		Notification: mcp.Notification{
+			Method: "initialized",
+		},
+	}
+	
+	notificationBytes, err := json.Marshal(notification)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal initialized notification: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		"POST",
+		c.endpoint.String(),
+		bytes.NewReader(notificationBytes),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create notification request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send initialized notification: %w", err)
+	}
+	resp.Body.Close()
 
 	c.initialized = true
 	return &result, nil

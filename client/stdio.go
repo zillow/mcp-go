@@ -24,6 +24,7 @@ type StdioMCPClient struct {
 	initialized   bool
 	notifications []func(mcp.JSONRPCNotification)
 	notifyMu      sync.RWMutex
+	capabilities  mcp.ServerCapabilities
 }
 
 func NewStdioMCPClient(
@@ -222,6 +223,27 @@ func (c *StdioMCPClient) Initialize(
 	var result mcp.InitializeResult
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Store capabilities
+	c.capabilities = result.Capabilities
+
+	// Send initialized notification
+	notification := mcp.JSONRPCNotification{
+		JSONRPC: mcp.JSONRPC_VERSION,
+		Notification: mcp.Notification{
+			Method: "initialized",
+		},
+	}
+
+	notificationBytes, err := json.Marshal(notification)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal initialized notification: %w", err)
+	}
+	notificationBytes = append(notificationBytes, '\n')
+
+	if _, err := c.stdin.Write(notificationBytes); err != nil {
+		return nil, fmt.Errorf("failed to send initialized notification: %w", err)
 	}
 
 	c.initialized = true
