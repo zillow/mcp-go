@@ -283,7 +283,18 @@ func (c *SSEMCPClient) Initialize(
 	ctx context.Context,
 	request mcp.InitializeRequest,
 ) (*mcp.InitializeResult, error) {
-	response, err := c.sendRequest(ctx, "initialize", request.Params)
+	// Ensure we send a params object with all required fields
+	params := struct {
+		ProtocolVersion string                 `json:"protocolVersion"`
+		ClientInfo      mcp.Implementation     `json:"clientInfo"`
+		Capabilities    mcp.ClientCapabilities `json:"capabilities"`
+	}{
+		ProtocolVersion: request.Params.ProtocolVersion,
+		ClientInfo:      request.Params.ClientInfo,
+		Capabilities:    request.Params.Capabilities, // Will be empty struct if not set
+	}
+
+	response, err := c.sendRequest(ctx, "initialize", params)
 	if err != nil {
 		return nil, err
 	}

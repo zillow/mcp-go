@@ -205,6 +205,7 @@ func (c *StdioMCPClient) Initialize(
 	ctx context.Context,
 	request mcp.InitializeRequest,
 ) (*mcp.InitializeResult, error) {
+	// This structure ensures Capabilities is always included in JSON
 	params := struct {
 		ProtocolVersion string                 `json:"protocolVersion"`
 		ClientInfo      mcp.Implementation     `json:"clientInfo"`
@@ -212,7 +213,7 @@ func (c *StdioMCPClient) Initialize(
 	}{
 		ProtocolVersion: request.Params.ProtocolVersion,
 		ClientInfo:      request.Params.ClientInfo,
-		Capabilities:    request.Params.Capabilities,
+		Capabilities:    request.Params.Capabilities, // Will be empty struct if not set
 	}
 
 	response, err := c.sendRequest(ctx, "initialize", params)
