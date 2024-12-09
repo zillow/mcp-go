@@ -233,18 +233,24 @@ func (c *StdioMCPClient) Initialize(
 	notification := mcp.JSONRPCNotification{
 		JSONRPC: mcp.JSONRPC_VERSION,
 		Notification: mcp.Notification{
-			Method: "initialized",
+			Method: "notifications/initialized",
 		},
 	}
 
 	notificationBytes, err := json.Marshal(notification)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal initialized notification: %w", err)
+		return nil, fmt.Errorf(
+			"failed to marshal initialized notification: %w",
+			err,
+		)
 	}
 	notificationBytes = append(notificationBytes, '\n')
 
 	if _, err := c.stdin.Write(notificationBytes); err != nil {
-		return nil, fmt.Errorf("failed to send initialized notification: %w", err)
+		return nil, fmt.Errorf(
+			"failed to send initialized notification: %w",
+			err,
+		)
 	}
 
 	c.initialized = true
