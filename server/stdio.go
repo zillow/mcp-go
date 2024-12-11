@@ -14,16 +14,16 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// StdioServer wraps a MCPServer and handles stdio communication
 // StdioServer wraps a MCPServer and handles stdio communication.
 // It provides a simple way to create command-line MCP servers that
-// communicate via standard input/output streams.
+// communicate via standard input/output streams using JSON-RPC messages.
 type StdioServer struct {
 	server    *MCPServer
 	errLogger *log.Logger
 }
 
-// NewStdioServer creates a new stdio server wrapper around an MCPServer
+// NewStdioServer creates a new stdio server wrapper around an MCPServer.
+// It initializes the server with a default error logger that discards all output.
 func NewStdioServer(server *MCPServer) *StdioServer {
 	return &StdioServer{
 		server:    server,
@@ -31,12 +31,15 @@ func NewStdioServer(server *MCPServer) *StdioServer {
 	}
 }
 
-// SetErrorLogger allows configuring where errors are logged
+// SetErrorLogger configures where error messages from the StdioServer are logged.
+// The provided logger will receive all error messages generated during server operation.
 func (s *StdioServer) SetErrorLogger(logger *log.Logger) {
 	s.errLogger = logger
 }
 
-// Listen starts listening for messages on the provided input and writes responses to the provided output
+// Listen starts listening for JSON-RPC messages on the provided input and writes responses to the provided output.
+// It runs until the context is cancelled or an error occurs.
+// Returns an error if there are issues with reading input or writing output.
 func (s *StdioServer) Listen(ctx context.Context, stdin io.Reader, stdout io.Writer) error {
 	reader := bufio.NewReader(stdin)
 
@@ -80,7 +83,9 @@ func (s *StdioServer) Listen(ctx context.Context, stdin io.Reader, stdout io.Wri
 	}
 }
 
-// processMessage handles a single message and writes the response
+// processMessage handles a single JSON-RPC message and writes the response.
+// It parses the message, processes it through the wrapped MCPServer, and writes any response.
+// Returns an error if there are issues with message processing or response writing.
 func (s *StdioServer) processMessage(ctx context.Context, line string, writer io.Writer) error {
 	// Parse the message as raw JSON
 	var rawMessage json.RawMessage
@@ -102,6 +107,8 @@ func (s *StdioServer) processMessage(ctx context.Context, line string, writer io
 	return nil
 }
 
+// writeResponse marshals and writes a JSON-RPC response message followed by a newline.
+// Returns an error if marshaling or writing fails.
 func (s *StdioServer) writeResponse(response mcp.JSONRPCMessage, writer io.Writer) error {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
@@ -116,7 +123,9 @@ func (s *StdioServer) writeResponse(response mcp.JSONRPCMessage, writer io.Write
 	return nil
 }
 
-// ServeStdio is a convenience function that creates and starts a StdioServer with os.Stdin and os.Stdout
+// ServeStdio is a convenience function that creates and starts a StdioServer with os.Stdin and os.Stdout.
+// It sets up signal handling for graceful shutdown on SIGTERM and SIGINT.
+// Returns an error if the server encounters any issues during operation.
 func ServeStdio(server *MCPServer) error {
 	s := NewStdioServer(server)
 	s.SetErrorLogger(log.New(os.Stderr, "", log.LstdFlags))
