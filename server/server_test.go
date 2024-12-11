@@ -615,7 +615,7 @@ func createTestServer() *MCPServer {
 
 	server.AddResource(
 		"resource://testresource",
-		func() ([]interface{}, error) {
+		func(arguments map[string]interface{}) ([]interface{}, error) {
 			return []interface{}{
 				mcp.TextResourceContents{
 					ResourceContents: mcp.ResourceContents{

@@ -13,10 +13,10 @@ import (
 type ServerOption func(*MCPServer)
 
 // ResourceHandlerFunc is a function that returns resource contents.
-type ResourceHandlerFunc func() ([]interface{}, error)
+type ResourceHandlerFunc func(arguments map[string]interface{}) ([]interface{}, error)
 
 // ResourceTemplateHandlerFunc is a function that returns a resource template.
-type ResourceTemplateHandlerFunc func() (mcp.ResourceTemplate, error)
+type ResourceTemplateHandlerFunc func(arguments map[string]interface{}) (mcp.ResourceTemplate, error)
 
 // PromptHandlerFunc handles prompt requests with given arguments.
 type PromptHandlerFunc func(arguments map[string]string) (*mcp.GetPromptResult, error)
@@ -423,7 +423,7 @@ func (s *MCPServer) handleListResourceTemplates(
 	JSONRPCMessage {
 	templates := make([]mcp.ResourceTemplate, 0, len(s.resourceTemplates))
 	for uriTemplate, handler := range s.resourceTemplates {
-		template, err := handler()
+		template, err := handler(nil)
 		if err != nil {
 			return createErrorResponse(
 				id,
@@ -463,7 +463,7 @@ func (s *MCPServer) handleReadResource(
 		)
 	}
 
-	contents, err := handler()
+	contents, err := handler(request.Params.Arguments)
 	if err != nil {
 		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 	}

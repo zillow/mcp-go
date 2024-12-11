@@ -185,7 +185,7 @@ func (s *MCPServer) runUpdateInterval() {
 	// }
 }
 
-func (s *MCPServer) handleReadResource() ([]interface{}, error) {
+func (s *MCPServer) handleReadResource(arguments map[string]interface{}) ([]interface{}, error) {
 	return []interface{}{
 		mcp.TextResourceContents{
 			ResourceContents: mcp.ResourceContents{
@@ -197,10 +197,10 @@ func (s *MCPServer) handleReadResource() ([]interface{}, error) {
 	}, nil
 }
 
-func (s *MCPServer) handleResourceTemplate() (mcp.ResourceTemplate, error) {
+func (s *MCPServer) handleResourceTemplate(arguments map[string]interface{}) (mcp.ResourceTemplate, error) {
 	return mcp.ResourceTemplate{
 		URITemplate: "test://static/resource/{id}",
-		Name:        "Static Resource",
+		Name:        "Static Resource", 
 		Description: "A static resource with a numeric ID",
 	}, nil
 }
