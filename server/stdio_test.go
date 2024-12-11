@@ -38,11 +38,16 @@ func TestStdioServer(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
+		// Create error channel to catch server errors
+		serverErrCh := make(chan error, 1)
+
 		// Start server in goroutine
 		go func() {
-			if err := stdioServer.Listen(ctx, stdinReader, stdoutWriter); err != nil && err != io.EOF {
-				t.Errorf("server error: %v", err)
+			err := stdioServer.Listen(ctx, stdinReader, stdoutWriter)
+			if err != nil && err != io.EOF && err != context.Canceled {
+				serverErrCh <- err
 			}
+			close(serverErrCh)
 		}()
 
 		// Create test message
@@ -60,19 +65,14 @@ func TestStdioServer(t *testing.T) {
 		}
 
 		// Send request
-		go func() {
-			requestBytes, err := json.Marshal(initRequest)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			_, err = stdinWriter.Write(append(requestBytes, '\n'))
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			stdinWriter.Close() // Close the writer after sending the message
-		}()
+		requestBytes, err := json.Marshal(initRequest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = stdinWriter.Write(append(requestBytes, '\n'))
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		// Read response
 		scanner := bufio.NewScanner(stdoutReader)
@@ -88,10 +88,7 @@ func TestStdioServer(t *testing.T) {
 
 		// Verify response structure
 		if response["jsonrpc"] != "2.0" {
-			t.Errorf(
-				"expected jsonrpc version 2.0, got %v",
-				response["jsonrpc"],
-			)
+			t.Errorf("expected jsonrpc version 2.0, got %v", response["jsonrpc"])
 		}
 		if response["id"].(float64) != 1 {
 			t.Errorf("expected id 1, got %v", response["id"])
@@ -105,6 +102,12 @@ func TestStdioServer(t *testing.T) {
 
 		// Clean up
 		cancel()
+		stdinWriter.Close()
 		stdoutWriter.Close()
+
+		// Check for server errors
+		if err := <-serverErrCh; err != nil {
+			t.Errorf("unexpected server error: %v", err)
+		}
 	})
 }
