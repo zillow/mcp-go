@@ -558,7 +558,12 @@ Prompts are reusable templates that help LLMs interact with your server effectiv
 
 ```go
 // Simple greeting prompt
-s.AddPrompt("greeting", func(args map[string]string) (*mcp.GetPromptResult, error) {
+s.AddPrompt(mcp.NewPrompt("greeting",
+    mcp.WithPromptDescription("A friendly greeting prompt"),
+    mcp.WithArgument("name",
+        mcp.ArgumentDescription("Name of the person to greet"),
+    ),
+), func(args map[string]string) (*mcp.GetPromptResult, error) {
     name := args["name"]
     if name == "" {
         name = "friend"
@@ -616,7 +621,13 @@ s.AddPrompt(mcp.NewPrompt("code_review",
 })
 
 // Database query builder prompt
-s.AddPrompt("query_builder", func(args map[string]string) (*mcp.GetPromptResult, error) {
+s.AddPrompt(mcp.NewPrompt("query_builder",
+    mcp.WithPromptDescription("SQL query builder assistance"),
+    mcp.WithArgument("table",
+        mcp.ArgumentDescription("Name of the table to query"),
+        mcp.RequiredArgument(),
+    ),
+), func(args map[string]string) (*mcp.GetPromptResult, error) {
     tableName := args["table"]
     if tableName == "" {
         return nil, fmt.Errorf("table name is required")

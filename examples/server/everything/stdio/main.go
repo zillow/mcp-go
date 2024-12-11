@@ -52,10 +52,9 @@ func NewMCPServer() *MCPServer {
 		"test://static/resource/{id}",
 		s.handleResourceTemplate,
 	)
-	s.server.AddPrompt(mcp.Prompt{
-		Name:        string(SIMPLE),
-		Description: "A simple prompt",
-	}, s.handleSimplePrompt)
+	s.server.AddPrompt(mcp.NewPrompt(string(SIMPLE),
+		mcp.WithPromptDescription("A simple prompt"),
+	), s.handleSimplePrompt)
 	s.server.AddPrompt(mcp.NewPrompt(string(COMPLEX),
 		mcp.WithPromptDescription("A complex prompt"),
 		mcp.WithArgument("temperature",
