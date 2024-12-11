@@ -15,6 +15,9 @@ import (
 )
 
 // StdioServer wraps a MCPServer and handles stdio communication
+// StdioServer wraps a MCPServer and handles stdio communication.
+// It provides a simple way to create command-line MCP servers that
+// communicate via standard input/output streams.
 type StdioServer struct {
 	server    *MCPServer
 	errLogger *log.Logger

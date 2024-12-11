@@ -13,6 +13,8 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// StdioMCPClient implements the MCPClient interface using stdio communication.
+// It launches a subprocess and communicates with it via standard input/output streams.
 type StdioMCPClient struct {
 	cmd           *exec.Cmd
 	stdin         io.WriteCloser

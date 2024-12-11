@@ -17,6 +17,9 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// SSEMCPClient implements the MCPClient interface using Server-Sent Events (SSE).
+// It maintains a persistent HTTP connection to receive server-pushed events
+// while sending requests over regular HTTP POST calls.
 type SSEMCPClient struct {
 	baseURL       *url.URL
 	endpoint      *url.URL

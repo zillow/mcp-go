@@ -9,8 +9,11 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// SSEServer implements a Server-Sent Events (SSE) based MCP server.
+// It provides real-time communication capabilities over HTTP using the SSE protocol.
 type SSEServer struct {
 	server   *MCPServer
 	baseURL  string
@@ -18,6 +21,7 @@ type SSEServer struct {
 	srv      *http.Server
 }
 
+// sseSession represents an active SSE connection.
 type sseSession struct {
 	writer  http.ResponseWriter
 	flusher http.Flusher
@@ -123,19 +127,19 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		s.writeJSONRPCError(w, nil, -32600, "Method not allowed")
+		s.writeJSONRPCError(w, nil, mcp.INVALID_REQUEST, "Method not allowed")
 		return
 	}
 
 	sessionID := r.URL.Query().Get("sessionId")
 	if sessionID == "" {
-		s.writeJSONRPCError(w, nil, -32602, "Missing sessionId")
+		s.writeJSONRPCError(w, nil, mcp.INVALID_PARAMS, "Missing sessionId")
 		return
 	}
 
 	sessionI, ok := s.sessions.Load(sessionID)
 	if !ok {
-		s.writeJSONRPCError(w, nil, -32602, "Invalid session ID")
+		s.writeJSONRPCError(w, nil, mcp.INVALID_PARAMS, "Invalid session ID")
 		return
 	}
 	session := sessionI.(*sseSession)
@@ -143,7 +147,7 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	// Parse message as raw JSON
 	var rawMessage json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&rawMessage); err != nil {
-		s.writeJSONRPCError(w, nil, -32700, "Parse error")
+		s.writeJSONRPCError(w, nil, mcp.PARSE_ERROR, "Parse error")
 		return
 	}
 

@@ -1,3 +1,4 @@
+// Package server provides MCP (Model Control Protocol) server implementations.
 package server
 
 import (
@@ -6,6 +7,24 @@ import (
 	"fmt"
 	"github.com/mark3labs/mcp-go/mcp"
 )
+
+// ServerOption is a function that configures an MCPServer.
+type ServerOption func(*MCPServer)
+
+// ResourceHandlerFunc is a function that returns resource contents.
+type ResourceHandlerFunc func() ([]interface{}, error)
+
+// ResourceTemplateHandlerFunc is a function that returns a resource template.
+type ResourceTemplateHandlerFunc func() (mcp.ResourceTemplate, error)
+
+// PromptHandlerFunc handles prompt requests with given arguments.
+type PromptHandlerFunc func(arguments map[string]string) (*mcp.GetPromptResult, error)
+
+// ToolHandlerFunc handles tool calls with given arguments.
+type ToolHandlerFunc func(arguments map[string]interface{}) (*mcp.CallToolResult, error)
+
+// NotificationHandlerFunc handles incoming notifications.
+type NotificationHandlerFunc func(notification mcp.JSONRPCNotification)
 
 type MCPServer struct {
 	name              string
@@ -34,16 +53,6 @@ type promptCapabilities struct {
 	listChanged bool
 }
 
-type ServerOption func(*MCPServer)
-
-type ResourceHandlerFunc func() ([]interface{}, error)
-type ResourceTemplateHandlerFunc func() (mcp.ResourceTemplate, error)
-
-type PromptHandlerFunc func(arguments map[string]string) (*mcp.GetPromptResult, error)
-
-type ToolHandlerFunc func(arguments map[string]interface{}) (*mcp.CallToolResult, error)
-type NotificationHandlerFunc func(notification mcp.JSONRPCNotification)
-
 func WithResourceCapabilities(subscribe, listChanged bool) ServerOption {
 	return func(s *MCPServer) {
 		s.capabilities.resources = &resourceCapabilities{
@@ -60,7 +69,6 @@ func WithPromptCapabilities(listChanged bool) ServerOption {
 		}
 	}
 }
-
 
 func WithLogging() ServerOption {
 	return func(s *MCPServer) {
