@@ -243,7 +243,12 @@ s.AddResourceTemplate("test://users/{id}", func() (mcp.ResourceTemplate, error) 
 })
 
 // Add a prompt
-s.AddPrompt("greeting", func(args map[string]string) (*mcp.GetPromptResult, error) {
+s.AddPrompt(mcp.NewPrompt("greeting",
+    mcp.WithPromptDescription("A friendly greeting prompt"),
+    mcp.WithArgument("name",
+        mcp.ArgumentDescription("Name of the person to greet"),
+    ),
+), func(args map[string]string) (*mcp.GetPromptResult, error) {
     name := args["name"]
     if name == "" {
         name = "friend"
@@ -574,7 +579,13 @@ s.AddPrompt("greeting", func(args map[string]string) (*mcp.GetPromptResult, erro
 })
 
 // Code review prompt with embedded resource
-s.AddPrompt("code_review", func(args map[string]string) (*mcp.GetPromptResult, error) {
+s.AddPrompt(mcp.NewPrompt("code_review",
+    mcp.WithPromptDescription("Code review assistance"),
+    mcp.WithArgument("pr_number",
+        mcp.ArgumentDescription("Pull request number to review"),
+        mcp.RequiredArgument(),
+    ),
+), func(args map[string]string) (*mcp.GetPromptResult, error) {
     prNumber := args["pr_number"]
     if prNumber == "" {
         return nil, fmt.Errorf("pr_number is required")

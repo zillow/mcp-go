@@ -453,22 +453,29 @@ type GetPromptResult struct {
 }
 
 // Prompt represents a prompt or prompt template that the server offers.
+// If Arguments is non-nil and non-empty, this indicates the prompt is a template
+// that requires argument values to be provided when calling prompts/get.
+// If Arguments is nil or empty, this is a static prompt that takes no arguments.
 type Prompt struct {
 	// The name of the prompt or prompt template.
 	Name string `json:"name"`
 	// An optional description of what this prompt provides
 	Description string `json:"description,omitempty"`
 	// A list of arguments to use for templating the prompt.
+	// The presence of arguments indicates this is a template prompt.
 	Arguments []PromptArgument `json:"arguments,omitempty"`
 }
 
-// PromptArgument describes an argument that a prompt can accept.
+// PromptArgument describes an argument that a prompt template can accept.
+// When a prompt includes arguments, clients must provide values for all
+// required arguments when making a prompts/get request.
 type PromptArgument struct {
 	// The name of the argument.
 	Name string `json:"name"`
 	// A human-readable description of the argument.
 	Description string `json:"description,omitempty"`
 	// Whether this argument must be provided.
+	// If true, clients must include this argument when calling prompts/get.
 	Required bool `json:"required,omitempty"`
 }
 

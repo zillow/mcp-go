@@ -56,10 +56,17 @@ func NewMCPServer() *MCPServer {
 		Name:        string(SIMPLE),
 		Description: "A simple prompt",
 	}, s.handleSimplePrompt)
-	s.server.AddPrompt(mcp.Prompt{
-		Name:        string(COMPLEX),
-		Description: "A complex prompt",
-	}, s.handleComplexPrompt)
+	s.server.AddPrompt(mcp.NewPrompt(string(COMPLEX),
+		mcp.WithPromptDescription("A complex prompt"),
+		mcp.WithArgument("temperature",
+			mcp.ArgumentDescription("The temperature parameter for generation"),
+			mcp.RequiredArgument(),
+		),
+		mcp.WithArgument("style",
+			mcp.ArgumentDescription("The style to use for the response"),
+			mcp.RequiredArgument(),
+		),
+	), s.handleComplexPrompt)
 	s.server.AddTool(mcp.Tool{
 		Name:        string(ECHO),
 		Description: "Echoes back the input",

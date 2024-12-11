@@ -189,15 +189,6 @@ func NewResource(uri, name, description, mimeType string) Resource {
 	}
 }
 
-// Helper function to create a new Prompt
-func NewPrompt(name, description string, arguments []PromptArgument) Prompt {
-	return Prompt{
-		Name:        name,
-		Description: description,
-		Arguments:   arguments,
-	}
-}
-
 // Helper function to create a new PromptMessage
 func NewPromptMessage(role Role, content interface{}) PromptMessage {
 	return PromptMessage{
