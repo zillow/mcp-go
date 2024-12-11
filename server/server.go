@@ -22,7 +22,6 @@ type MCPServer struct {
 type serverCapabilities struct {
 	resources *resourceCapabilities
 	prompts   *promptCapabilities
-	tools     *toolCapabilities
 	logging   bool
 }
 
@@ -32,10 +31,6 @@ type resourceCapabilities struct {
 }
 
 type promptCapabilities struct {
-	listChanged bool
-}
-
-type toolCapabilities struct {
 	listChanged bool
 }
 
@@ -66,13 +61,6 @@ func WithPromptCapabilities(listChanged bool) ServerOption {
 	}
 }
 
-func WithToolCapabilities(listChanged bool) ServerOption {
-	return func(s *MCPServer) {
-		s.capabilities.tools = &toolCapabilities{
-			listChanged: listChanged,
-		}
-	}
-}
 
 func WithLogging() ServerOption {
 	return func(s *MCPServer) {
@@ -247,7 +235,7 @@ func (s *MCPServer) HandleMessage(
 		}
 		return s.handleGetPrompt(baseMessage.ID, request)
 	case "tools/list":
-		if s.capabilities.tools == nil {
+		if len(s.tools) == 0 {
 			return createErrorResponse(
 				baseMessage.ID,
 				mcp.METHOD_NOT_FOUND,
@@ -264,7 +252,7 @@ func (s *MCPServer) HandleMessage(
 		}
 		return s.handleListTools(baseMessage.ID, request)
 	case "tools/call":
-		if s.capabilities.tools == nil {
+		if len(s.tools) == 0 {
 			return createErrorResponse(
 				baseMessage.ID,
 				mcp.METHOD_NOT_FOUND,
@@ -314,9 +302,6 @@ func (s *MCPServer) AddPrompt(name string, handler PromptHandlerFunc) {
 }
 
 func (s *MCPServer) AddTool(tool mcp.Tool, handler ToolHandlerFunc) {
-	if s.capabilities.tools == nil {
-		panic("Tool capabilities not enabled")
-	}
 	s.tools[tool.Name] = tool
 	s.toolHandlers[tool.Name] = handler
 }
@@ -351,11 +336,12 @@ func (s *MCPServer) handleInitialize(
 		}
 	}
 
-	if s.capabilities.tools != nil {
+	// Only include Tools capability if there are registered tools
+	if len(s.tools) > 0 {
 		capabilities.Tools = &struct {
 			ListChanged bool `json:"listChanged,omitempty"`
 		}{
-			ListChanged: s.capabilities.tools.listChanged,
+			ListChanged: true, // Always true when tools are present
 		}
 	}
 

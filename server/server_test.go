@@ -50,10 +50,63 @@ func TestMCPServer_Capabilities(t *testing.T) {
 			options: []ServerOption{
 				WithResourceCapabilities(true, true),
 				WithPromptCapabilities(true),
-				WithToolCapabilities(true),
 				WithLogging(),
 			},
 			validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+				server := NewMCPServer("test-server", "1.0.0",
+					WithResourceCapabilities(true, true),
+					WithPromptCapabilities(true),
+					WithLogging(),
+				)
+
+				// Add a test tool to enable tool capabilities
+				server.AddTool(mcp.Tool{
+					Name:        "test-tool",
+					Description: "Test tool",
+					InputSchema: mcp.ToolInputSchema{
+						Type:       "object",
+						Properties: map[string]interface{}{},
+					},
+				}, func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+					return &mcp.CallToolResult{}, nil
+				})
+
+				// Create a new server with all capabilities and a tool
+				server = NewMCPServer(
+					"test-server",
+					"1.0.0",
+					WithResourceCapabilities(true, true),
+					WithPromptCapabilities(true),
+					WithLogging(),
+				)
+
+				// Add a test tool to enable tool capabilities
+				server.AddTool(mcp.Tool{
+					Name:        "test-tool",
+					Description: "Test tool",
+					InputSchema: mcp.ToolInputSchema{
+						Type:       "object",
+						Properties: map[string]interface{}{},
+					},
+				}, func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+					return &mcp.CallToolResult{}, nil
+				})
+
+				// Create and handle the initialize message
+				message := mcp.JSONRPCRequest{
+					JSONRPC: "2.0",
+					ID:      1,
+					Request: mcp.Request{
+						Method: "initialize",
+					},
+				}
+				messageBytes, err := json.Marshal(message)
+				assert.NoError(t, err)
+
+				response = server.HandleMessage(
+					context.Background(),
+					messageBytes,
+				)
 				resp, ok := response.(mcp.JSONRPCResponse)
 				assert.True(t, ok)
 
@@ -115,7 +168,6 @@ func TestMCPServer_HandleValidMessages(t *testing.T) {
 	server := NewMCPServer("test-server", "1.0.0",
 		WithResourceCapabilities(true, true),
 		WithPromptCapabilities(true),
-		WithToolCapabilities(true),
 	)
 
 	tests := []struct {
@@ -305,8 +357,19 @@ func TestMCPServer_HandleUndefinedHandlers(t *testing.T) {
 	server := NewMCPServer("test-server", "1.0.0",
 		WithResourceCapabilities(true, true),
 		WithPromptCapabilities(true),
-		WithToolCapabilities(true),
 	)
+
+	// Add a test tool to enable tool capabilities
+	server.AddTool(mcp.Tool{
+		Name:        "test-tool",
+		Description: "Test tool",
+		InputSchema: mcp.ToolInputSchema{
+			Type:       "object",
+			Properties: map[string]interface{}{},
+		},
+	}, func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	})
 
 	tests := []struct {
 		name        string
@@ -372,7 +435,7 @@ func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
 	server := NewMCPServer(
 		"test-server",
 		"1.0.0",
-	) // No capabilities enabled
+	)
 
 	tests := []struct {
 		name        string
@@ -436,7 +499,6 @@ func createTestServer() *MCPServer {
 	server := NewMCPServer("test-server", "1.0.0",
 		WithResourceCapabilities(true, true),
 		WithPromptCapabilities(true),
-		WithToolCapabilities(true),
 	)
 
 	server.AddResource(

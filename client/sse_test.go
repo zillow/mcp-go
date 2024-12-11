@@ -16,8 +16,19 @@ func TestSSEMCPClient(t *testing.T) {
 		"1.0.0",
 		server.WithResourceCapabilities(true, true),
 		server.WithPromptCapabilities(true),
-		server.WithToolCapabilities(true),
 	)
+
+	// Add a test tool
+	mcpServer.AddTool(mcp.Tool{
+		Name:        "test-tool",
+		Description: "Test tool",
+		InputSchema: mcp.ToolInputSchema{
+			Type:       "object",
+			Properties: map[string]interface{}{},
+		},
+	}, func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	})
 
 	// Create test server
 	testServer := server.NewTestServer(mcpServer)
