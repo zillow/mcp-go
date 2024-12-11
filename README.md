@@ -160,19 +160,6 @@ func main() {
         return mcp.NewToolResultText(fmt.Sprintf("%.2f", result)), nil
     })
 
-    // Add a simple resource
-    s.AddResource("docs://help/calculator", func() ([]interface{}, error) {
-        return []interface{}{
-            mcp.TextResourceContents{
-                ResourceContents: mcp.ResourceContents{
-                    URI:      "docs://help/calculator",
-                    MIMEType: "text/plain",
-                },
-                Text: "This calculator supports basic arithmetic operations: add, subtract, multiply, and divide.",
-            },
-        }, nil
-    })
-
     // Start the server
     if err := server.ServeStdio(s); err != nil {
         fmt.Printf("Server error: %v\n", err)
@@ -205,68 +192,6 @@ s := server.NewMCPServer(
     "My Server",  // Server name
     "1.0.0",     // Version
 )
-
-// Create a server with all capabilities enabled
-s := server.NewMCPServer(
-    "Full Featured Server",
-    "1.0.0",
-    server.WithResourceCapabilities(true, true), // Enable resource subscriptions and list change notifications
-    server.WithPromptCapabilities(true),         // Enable prompt list change notifications
-    server.WithLogging(),                        // Enable logging support
-)
-
-// Add a notification handler
-s.AddNotificationHandler(func(notification mcp.JSONRPCNotification) {
-    log.Printf("Received notification: %s", notification.Method)
-})
-
-// Add a simple resource
-s.AddResource("test://example", func() ([]interface{}, error) {
-    return []interface{}{
-        mcp.TextResourceContents{
-            ResourceContents: mcp.ResourceContents{
-                URI:      "test://example",
-                MIMEType: "text/plain",
-            },
-            Text: "This is an example resource",
-        },
-    }, nil
-})
-
-// Add a resource template
-s.AddResourceTemplate("test://users/{id}", func() (mcp.ResourceTemplate, error) {
-    return mcp.ResourceTemplate{
-        Name:        "User Profile",
-        Description: "Returns user profile information",
-        MIMEType:    "application/json",
-    }, nil
-})
-
-// Add a prompt
-s.AddPrompt(mcp.NewPrompt("greeting",
-    mcp.WithPromptDescription("A friendly greeting prompt"),
-    mcp.WithArgument("name",
-        mcp.ArgumentDescription("Name of the person to greet"),
-    ),
-), func(args map[string]string) (*mcp.GetPromptResult, error) {
-    name := args["name"]
-    if name == "" {
-        name = "friend"
-    }
-    
-    return mcp.NewGetPromptResult(
-        "A friendly greeting",
-        []mcp.PromptMessage{
-            {
-                Role: mcp.RoleAssistant,
-                Content: mcp.TextContent{
-                    Type: "text",
-                    Text: fmt.Sprintf("Hello, %s! How can I help you today?", name),
-                },
-            },
-        },
-    ), nil
-})
 
 // Start the server using stdio
 if err := server.ServeStdio(s); err != nil {
