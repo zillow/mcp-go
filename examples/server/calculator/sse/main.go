@@ -12,7 +12,6 @@ func main() {
 	mcpServer := server.NewMCPServer(
 		"calculator",
 		"1.0.0",
-		server.WithToolCapabilities(true),
 	)
 
 	// Add calculator tools

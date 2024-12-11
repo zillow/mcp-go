@@ -17,6 +17,10 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// SSEMCPClient implements the MCPClient interface using Server-Sent Events (SSE).
+// It maintains a persistent HTTP connection to receive server-pushed events
+// while sending requests over regular HTTP POST calls. The client handles
+// automatic reconnection and message routing between requests and responses.
 type SSEMCPClient struct {
 	baseURL       *url.URL
 	endpoint      *url.URL
@@ -29,8 +33,11 @@ type SSEMCPClient struct {
 	notifications []func(mcp.JSONRPCNotification)
 	notifyMu      sync.RWMutex
 	endpointChan  chan struct{}
+	capabilities  mcp.ServerCapabilities
 }
 
+// NewSSEMCPClient creates a new SSE-based MCP client with the given base URL.
+// Returns an error if the URL is invalid.
 func NewSSEMCPClient(baseURL string) (*SSEMCPClient, error) {
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
@@ -46,6 +53,8 @@ func NewSSEMCPClient(baseURL string) (*SSEMCPClient, error) {
 	}, nil
 }
 
+// Start initiates the SSE connection to the server and waits for the endpoint information.
+// Returns an error if the connection fails or times out waiting for the endpoint.
 func (c *SSEMCPClient) Start(ctx context.Context) error {
 
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL.String(), nil)
@@ -86,6 +95,8 @@ func (c *SSEMCPClient) Start(ctx context.Context) error {
 	return nil
 }
 
+// readSSE continuously reads the SSE stream and processes events.
+// It runs until the connection is closed or an error occurs.
 func (c *SSEMCPClient) readSSE(reader io.ReadCloser) {
 	defer reader.Close()
 
@@ -122,6 +133,8 @@ func (c *SSEMCPClient) readSSE(reader io.ReadCloser) {
 	}
 }
 
+// handleSSEEvent processes SSE events based on their type.
+// Handles 'endpoint' events for connection setup and 'message' events for JSON-RPC communication.
 func (c *SSEMCPClient) handleSSEEvent(event, data string) {
 	switch event {
 	case "endpoint":
@@ -185,6 +198,8 @@ func (c *SSEMCPClient) handleSSEEvent(event, data string) {
 	}
 }
 
+// OnNotification registers a handler function to be called when notifications are received.
+// Multiple handlers can be registered and will be called in the order they were added.
 func (c *SSEMCPClient) OnNotification(
 	handler func(notification mcp.JSONRPCNotification),
 ) {
@@ -193,6 +208,8 @@ func (c *SSEMCPClient) OnNotification(
 	c.notifications = append(c.notifications, handler)
 }
 
+// sendRequest sends a JSON-RPC request to the server and waits for a response.
+// Returns the raw JSON response message or an error if the request fails.
 func (c *SSEMCPClient) sendRequest(
 	ctx context.Context,
 	method string,
@@ -282,7 +299,18 @@ func (c *SSEMCPClient) Initialize(
 	ctx context.Context,
 	request mcp.InitializeRequest,
 ) (*mcp.InitializeResult, error) {
-	response, err := c.sendRequest(ctx, "initialize", request.Params)
+	// Ensure we send a params object with all required fields
+	params := struct {
+		ProtocolVersion string                 `json:"protocolVersion"`
+		ClientInfo      mcp.Implementation     `json:"clientInfo"`
+		Capabilities    mcp.ClientCapabilities `json:"capabilities"`
+	}{
+		ProtocolVersion: request.Params.ProtocolVersion,
+		ClientInfo:      request.Params.ClientInfo,
+		Capabilities:    request.Params.Capabilities, // Will be empty struct if not set
+	}
+
+	response, err := c.sendRequest(ctx, "initialize", params)
 	if err != nil {
 		return nil, err
 	}
@@ -291,6 +319,46 @@ func (c *SSEMCPClient) Initialize(
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
+
+	// Store capabilities
+	c.capabilities = result.Capabilities
+
+	// Send initialized notification
+	notification := mcp.JSONRPCNotification{
+		JSONRPC: mcp.JSONRPC_VERSION,
+		Notification: mcp.Notification{
+			Method: "notifications/initialized",
+		},
+	}
+
+	notificationBytes, err := json.Marshal(notification)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to marshal initialized notification: %w",
+			err,
+		)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		"POST",
+		c.endpoint.String(),
+		bytes.NewReader(notificationBytes),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create notification request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to send initialized notification: %w",
+			err,
+		)
+	}
+	resp.Body.Close()
 
 	c.initialized = true
 	return &result, nil
@@ -467,10 +535,13 @@ func (c *SSEMCPClient) Complete(
 
 // Helper methods
 
+// GetEndpoint returns the current endpoint URL for the SSE connection.
 func (c *SSEMCPClient) GetEndpoint() *url.URL {
 	return c.endpoint
 }
 
+// Close shuts down the SSE client connection and cleans up any pending responses.
+// Returns an error if the shutdown process fails.
 func (c *SSEMCPClient) Close() error {
 	select {
 	case <-c.done:

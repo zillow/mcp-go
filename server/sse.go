@@ -9,8 +9,11 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// SSEServer implements a Server-Sent Events (SSE) based MCP server.
+// It provides real-time communication capabilities over HTTP using the SSE protocol.
 type SSEServer struct {
 	server   *MCPServer
 	baseURL  string
@@ -18,12 +21,14 @@ type SSEServer struct {
 	srv      *http.Server
 }
 
+// sseSession represents an active SSE connection.
 type sseSession struct {
 	writer  http.ResponseWriter
 	flusher http.Flusher
 	done    chan struct{}
 }
 
+// NewSSEServer creates a new SSE server instance with the given MCP server and base URL.
 func NewSSEServer(server *MCPServer, baseURL string) *SSEServer {
 	return &SSEServer{
 		server:  server,
@@ -54,6 +59,8 @@ func NewTestServer(server *MCPServer) *httptest.Server {
 	return testServer
 }
 
+// Start begins serving SSE connections on the specified address.
+// It sets up HTTP handlers for SSE and message endpoints.
 func (s *SSEServer) Start(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/sse", s.handleSSE)
@@ -67,6 +74,8 @@ func (s *SSEServer) Start(addr string) error {
 	return s.srv.ListenAndServe()
 }
 
+// Shutdown gracefully stops the SSE server, closing all active sessions
+// and shutting down the HTTP server.
 func (s *SSEServer) Shutdown(ctx context.Context) error {
 	if s.srv != nil {
 		s.sessions.Range(func(key, value interface{}) bool {
@@ -82,6 +91,8 @@ func (s *SSEServer) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// handleSSE handles incoming SSE connection requests.
+// It sets up appropriate headers and creates a new session for the client.
 func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -121,21 +132,23 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 	close(session.done)
 }
 
+// handleMessage processes incoming JSON-RPC messages from clients and sends responses
+// back through both the SSE connection and HTTP response.
 func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		s.writeJSONRPCError(w, nil, -32600, "Method not allowed")
+		s.writeJSONRPCError(w, nil, mcp.INVALID_REQUEST, "Method not allowed")
 		return
 	}
 
 	sessionID := r.URL.Query().Get("sessionId")
 	if sessionID == "" {
-		s.writeJSONRPCError(w, nil, -32602, "Missing sessionId")
+		s.writeJSONRPCError(w, nil, mcp.INVALID_PARAMS, "Missing sessionId")
 		return
 	}
 
 	sessionI, ok := s.sessions.Load(sessionID)
 	if !ok {
-		s.writeJSONRPCError(w, nil, -32602, "Invalid session ID")
+		s.writeJSONRPCError(w, nil, mcp.INVALID_PARAMS, "Invalid session ID")
 		return
 	}
 	session := sessionI.(*sseSession)
@@ -143,7 +156,7 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	// Parse message as raw JSON
 	var rawMessage json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&rawMessage); err != nil {
-		s.writeJSONRPCError(w, nil, -32700, "Parse error")
+		s.writeJSONRPCError(w, nil, mcp.PARSE_ERROR, "Parse error")
 		return
 	}
 
@@ -163,6 +176,7 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// writeJSONRPCError writes a JSON-RPC error response with the given error details.
 func (s *SSEServer) writeJSONRPCError(
 	w http.ResponseWriter,
 	id interface{},
@@ -175,7 +189,8 @@ func (s *SSEServer) writeJSONRPCError(
 	json.NewEncoder(w).Encode(response)
 }
 
-// SendEventToSession sends an event to a specific session
+// SendEventToSession sends an event to a specific SSE session identified by sessionID.
+// Returns an error if the session is not found or closed.
 func (s *SSEServer) SendEventToSession(
 	sessionID string,
 	event interface{},

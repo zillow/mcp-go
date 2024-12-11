@@ -1,3 +1,4 @@
+// Package server provides MCP (Model Control Protocol) server implementations.
 package server
 
 import (
@@ -8,6 +9,26 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// ServerOption is a function that configures an MCPServer.
+type ServerOption func(*MCPServer)
+
+// ResourceHandlerFunc is a function that returns resource contents.
+type ResourceHandlerFunc func() ([]interface{}, error)
+
+// ResourceTemplateHandlerFunc is a function that returns a resource template.
+type ResourceTemplateHandlerFunc func() (mcp.ResourceTemplate, error)
+
+// PromptHandlerFunc handles prompt requests with given arguments.
+type PromptHandlerFunc func(arguments map[string]string) (*mcp.GetPromptResult, error)
+
+// ToolHandlerFunc handles tool calls with given arguments.
+type ToolHandlerFunc func(arguments map[string]interface{}) (*mcp.CallToolResult, error)
+
+// NotificationHandlerFunc handles incoming notifications.
+type NotificationHandlerFunc func(notification mcp.JSONRPCNotification)
+
+// MCPServer implements a Model Control Protocol server that can handle various types of requests
+// including resources, prompts, and tools.
 type MCPServer struct {
 	name              string
 	version           string
@@ -21,36 +42,25 @@ type MCPServer struct {
 	capabilities      serverCapabilities
 }
 
+// serverCapabilities defines the supported features of the MCP server
 type serverCapabilities struct {
 	resources *resourceCapabilities
 	prompts   *promptCapabilities
-	tools     *toolCapabilities
 	logging   bool
 }
 
+// resourceCapabilities defines the supported resource-related features
 type resourceCapabilities struct {
 	subscribe   bool
 	listChanged bool
 }
 
+// promptCapabilities defines the supported prompt-related features
 type promptCapabilities struct {
 	listChanged bool
 }
 
-type toolCapabilities struct {
-	listChanged bool
-}
-
-type ServerOption func(*MCPServer)
-
-type ResourceHandlerFunc func() ([]interface{}, error)
-type ResourceTemplateHandlerFunc func() (mcp.ResourceTemplate, error)
-
-type PromptHandlerFunc func(arguments map[string]string) (*mcp.GetPromptResult, error)
-
-type ToolHandlerFunc func(arguments map[string]interface{}) (*mcp.CallToolResult, error)
-type NotificationHandlerFunc func(notification mcp.JSONRPCNotification)
-
+// WithResourceCapabilities configures resource-related server capabilities
 func WithResourceCapabilities(subscribe, listChanged bool) ServerOption {
 	return func(s *MCPServer) {
 		s.capabilities.resources = &resourceCapabilities{
@@ -60,6 +70,7 @@ func WithResourceCapabilities(subscribe, listChanged bool) ServerOption {
 	}
 }
 
+// WithPromptCapabilities configures prompt-related server capabilities
 func WithPromptCapabilities(listChanged bool) ServerOption {
 	return func(s *MCPServer) {
 		s.capabilities.prompts = &promptCapabilities{
@@ -68,20 +79,14 @@ func WithPromptCapabilities(listChanged bool) ServerOption {
 	}
 }
 
-func WithToolCapabilities(listChanged bool) ServerOption {
-	return func(s *MCPServer) {
-		s.capabilities.tools = &toolCapabilities{
-			listChanged: listChanged,
-		}
-	}
-}
-
+// WithLogging enables logging capabilities for the server
 func WithLogging() ServerOption {
 	return func(s *MCPServer) {
 		s.capabilities.logging = true
 	}
 }
 
+// NewMCPServer creates a new MCP server instance with the given name, version and options
 func NewMCPServer(
 	name, version string,
 	opts ...ServerOption,
@@ -104,6 +109,7 @@ func NewMCPServer(
 	return s
 }
 
+// HandleMessage processes an incoming JSON-RPC message and returns an appropriate response
 func (s *MCPServer) HandleMessage(
 	ctx context.Context,
 	message json.RawMessage,
@@ -250,7 +256,7 @@ func (s *MCPServer) HandleMessage(
 		}
 		return s.handleGetPrompt(baseMessage.ID, request)
 	case "tools/list":
-		if s.capabilities.tools == nil {
+		if len(s.tools) == 0 {
 			return createErrorResponse(
 				baseMessage.ID,
 				mcp.METHOD_NOT_FOUND,
@@ -267,7 +273,7 @@ func (s *MCPServer) HandleMessage(
 		}
 		return s.handleListTools(baseMessage.ID, request)
 	case "tools/call":
-		if s.capabilities.tools == nil {
+		if len(s.tools) == 0 {
 			return createErrorResponse(
 				baseMessage.ID,
 				mcp.METHOD_NOT_FOUND,
@@ -292,6 +298,7 @@ func (s *MCPServer) HandleMessage(
 	}
 }
 
+// AddResource registers a new resource handler for the given URI
 func (s *MCPServer) AddResource(uri string, handler ResourceHandlerFunc) {
 	if s.capabilities.resources == nil {
 		panic("Resource capabilities not enabled")
@@ -299,6 +306,7 @@ func (s *MCPServer) AddResource(uri string, handler ResourceHandlerFunc) {
 	s.resources[uri] = handler
 }
 
+// AddResourceTemplate registers a new resource template handler for the given URI template
 func (s *MCPServer) AddResourceTemplate(
 	uriTemplate string,
 	handler ResourceTemplateHandlerFunc,
@@ -309,6 +317,8 @@ func (s *MCPServer) AddResourceTemplate(
 	s.resourceTemplates[uriTemplate] = handler
 }
 
+
+// AddPrompt registers a new prompt handler with the given name
 func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler PromptHandlerFunc) {
 	if s.capabilities.prompts == nil {
 		panic("Prompt capabilities not enabled")
@@ -317,14 +327,13 @@ func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler PromptHandlerFunc) {
 	s.promptHandlers[prompt.Name] = handler
 }
 
+// AddTool registers a new tool and its handler
 func (s *MCPServer) AddTool(tool mcp.Tool, handler ToolHandlerFunc) {
-	if s.capabilities.tools == nil {
-		panic("Tool capabilities not enabled")
-	}
 	s.tools[tool.Name] = tool
 	s.toolHandlers[tool.Name] = handler
 }
 
+// AddNotificationHandler registers a new handler for incoming notifications
 func (s *MCPServer) AddNotificationHandler(
 	handler NotificationHandlerFunc,
 ) {
@@ -355,11 +364,12 @@ func (s *MCPServer) handleInitialize(
 		}
 	}
 
-	if s.capabilities.tools != nil {
+	// Only include Tools capability if there are registered tools
+	if len(s.tools) > 0 {
 		capabilities.Tools = &struct {
 			ListChanged bool `json:"listChanged,omitempty"`
 		}{
-			ListChanged: s.capabilities.tools.listChanged,
+			ListChanged: true, // Always true when tools are present
 		}
 	}
 

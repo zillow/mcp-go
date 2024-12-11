@@ -40,7 +40,6 @@ func NewMCPServer() *MCPServer {
 			"1.0.0",
 			server.WithResourceCapabilities(true, true),
 			server.WithPromptCapabilities(true),
-			server.WithToolCapabilities(true),
 			server.WithLogging(),
 		),
 		subscriptions: make(map[string]bool),

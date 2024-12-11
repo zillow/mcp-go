@@ -13,6 +13,10 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// StdioMCPClient implements the MCPClient interface using stdio communication.
+// It launches a subprocess and communicates with it via standard input/output streams
+// using JSON-RPC messages. The client handles message routing between requests and
+// responses, and supports asynchronous notifications.
 type StdioMCPClient struct {
 	cmd           *exec.Cmd
 	stdin         io.WriteCloser
@@ -24,8 +28,12 @@ type StdioMCPClient struct {
 	initialized   bool
 	notifications []func(mcp.JSONRPCNotification)
 	notifyMu      sync.RWMutex
+	capabilities  mcp.ServerCapabilities
 }
 
+// NewStdioMCPClient creates a new stdio-based MCP client that communicates with a subprocess.
+// It launches the specified command with given arguments and sets up stdin/stdout pipes for communication.
+// Returns an error if the subprocess cannot be started or the pipes cannot be created.
 func NewStdioMCPClient(
 	command string,
 	args ...string,
@@ -65,6 +73,8 @@ func NewStdioMCPClient(
 	return client, nil
 }
 
+// Close shuts down the stdio client, closing the stdin pipe and waiting for the subprocess to exit.
+// Returns an error if there are issues closing stdin or waiting for the subprocess to terminate.
 func (c *StdioMCPClient) Close() error {
 	close(c.done)
 	if err := c.stdin.Close(); err != nil {
@@ -73,6 +83,8 @@ func (c *StdioMCPClient) Close() error {
 	return c.cmd.Wait()
 }
 
+// OnNotification registers a handler function to be called when notifications are received.
+// Multiple handlers can be registered and will be called in the order they were added.
 func (c *StdioMCPClient) OnNotification(
 	handler func(notification mcp.JSONRPCNotification),
 ) {
@@ -81,6 +93,9 @@ func (c *StdioMCPClient) OnNotification(
 	c.notifications = append(c.notifications, handler)
 }
 
+// readResponses continuously reads and processes responses from the server's stdout.
+// It handles both responses to requests and notifications, routing them appropriately.
+// Runs until the done channel is closed or an error occurs reading from stdout.
 func (c *StdioMCPClient) readResponses() {
 	for {
 		select {
@@ -142,6 +157,10 @@ func (c *StdioMCPClient) readResponses() {
 	}
 }
 
+// sendRequest sends a JSON-RPC request to the server and waits for a response.
+// It creates a unique request ID, sends the request over stdin, and waits for
+// the corresponding response or context cancellation.
+// Returns the raw JSON response message or an error if the request fails.
 func (c *StdioMCPClient) sendRequest(
 	ctx context.Context,
 	method string,
@@ -204,6 +223,7 @@ func (c *StdioMCPClient) Initialize(
 	ctx context.Context,
 	request mcp.InitializeRequest,
 ) (*mcp.InitializeResult, error) {
+	// This structure ensures Capabilities is always included in JSON
 	params := struct {
 		ProtocolVersion string                 `json:"protocolVersion"`
 		ClientInfo      mcp.Implementation     `json:"clientInfo"`
@@ -211,7 +231,7 @@ func (c *StdioMCPClient) Initialize(
 	}{
 		ProtocolVersion: request.Params.ProtocolVersion,
 		ClientInfo:      request.Params.ClientInfo,
-		Capabilities:    request.Params.Capabilities,
+		Capabilities:    request.Params.Capabilities, // Will be empty struct if not set
 	}
 
 	response, err := c.sendRequest(ctx, "initialize", params)
@@ -222,6 +242,33 @@ func (c *StdioMCPClient) Initialize(
 	var result mcp.InitializeResult
 	if err := json.Unmarshal(*response, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Store capabilities
+	c.capabilities = result.Capabilities
+
+	// Send initialized notification
+	notification := mcp.JSONRPCNotification{
+		JSONRPC: mcp.JSONRPC_VERSION,
+		Notification: mcp.Notification{
+			Method: "notifications/initialized",
+		},
+	}
+
+	notificationBytes, err := json.Marshal(notification)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to marshal initialized notification: %w",
+			err,
+		)
+	}
+	notificationBytes = append(notificationBytes, '\n')
+
+	if _, err := c.stdin.Write(notificationBytes); err != nil {
+		return nil, fmt.Errorf(
+			"failed to send initialized notification: %w",
+			err,
+		)
 	}
 
 	c.initialized = true

@@ -1,3 +1,5 @@
+// Package mcp defines the core types and interfaces for the Model Control Protocol (MCP).
+// MCP is a protocol for communication between LLM-powered applications and their supporting services.
 package mcp
 
 /* JSON-RPC types */
@@ -5,10 +7,11 @@ package mcp
 // JSONRPCMessage represents either a JSONRPCRequest, JSONRPCNotification, JSONRPCResponse, or JSONRPCError
 type JSONRPCMessage interface{}
 
-const (
-	LATEST_PROTOCOL_VERSION = "2024-11-05"
-	JSONRPC_VERSION         = "2.0"
-)
+// LATEST_PROTOCOL_VERSION is the most recent version of the MCP protocol.
+const LATEST_PROTOCOL_VERSION = "2024-11-05"
+
+// JSONRPC_VERSION is the version of JSON-RPC used by MCP.
+const JSONRPC_VERSION = "2.0"
 
 // ProgressToken is used to associate progress notifications with the original request.
 type ProgressToken interface{}
@@ -47,6 +50,7 @@ type Result struct {
 }
 
 // RequestId is a uniquely identifying ID for a request in JSON-RPC.
+// It can be any JSON-serializable value, typically a number or string.
 type RequestId interface{}
 
 // JSONRPCRequest represents a request that expects a response.
@@ -674,17 +678,19 @@ type Annotated struct {
 }
 
 // TextContent represents text provided to or from an LLM.
+// It must have Type set to "text".
 type TextContent struct {
 	Annotated
-	Type string `json:"type"`
+	Type string `json:"type"` // Must be "text"
 	// The text content of the message.
 	Text string `json:"text"`
 }
 
 // ImageContent represents an image provided to or from an LLM.
+// It must have Type set to "image".
 type ImageContent struct {
 	Annotated
-	Type string `json:"type"`
+	Type string `json:"type"` // Must be "image"
 	// The base64-encoded image data.
 	Data string `json:"data"`
 	// The MIME type of the image. Different providers may support different image types.
@@ -834,11 +840,21 @@ type RootsListChangedNotification struct {
 }
 
 /* Client messages */
+// ClientRequest represents any request that can be sent from client to server.
 type ClientRequest interface{}
+
+// ClientNotification represents any notification that can be sent from client to server.
 type ClientNotification interface{}
+
+// ClientResult represents any result that can be sent from client to server.
 type ClientResult interface{}
 
 /* Server messages */
+// ServerRequest represents any request that can be sent from server to client.
 type ServerRequest interface{}
+
+// ServerNotification represents any notification that can be sent from server to client.
 type ServerNotification interface{}
+
+// ServerResult represents any result that can be sent from server to client.
 type ServerResult interface{}

@@ -14,52 +14,39 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// StdioServer wraps a MCPServer and handles stdio communication
+// StdioServer wraps a MCPServer and handles stdio communication.
+// It provides a simple way to create command-line MCP servers that
+// communicate via standard input/output streams using JSON-RPC messages.
 type StdioServer struct {
 	server    *MCPServer
-	sigChan   chan os.Signal
 	errLogger *log.Logger
-	done      chan struct{}
 }
 
-// ServeStdio creates a stdio server wrapper around an existing MCPServer
-func ServeStdio(server *MCPServer) error {
-	s := &StdioServer{
+// NewStdioServer creates a new stdio server wrapper around an MCPServer.
+// It initializes the server with a default error logger that discards all output.
+func NewStdioServer(server *MCPServer) *StdioServer {
+	return &StdioServer{
 		server:    server,
-		sigChan:   make(chan os.Signal, 1),
-		errLogger: log.New(os.Stderr, "", log.LstdFlags),
-		done:      make(chan struct{}),
+		errLogger: log.New(io.Discard, "", log.LstdFlags), // Default to discarding logs
 	}
-
-	// Set up signal handling
-	signal.Notify(s.sigChan, syscall.SIGTERM, syscall.SIGINT)
-
-	// Handle shutdown in a separate goroutine
-	go func() {
-		<-s.sigChan
-		close(s.done)
-	}()
-
-	return s.serve()
 }
 
-func (s *StdioServer) serve() error {
-	reader := bufio.NewReader(os.Stdin)
+// SetErrorLogger configures where error messages from the StdioServer are logged.
+// The provided logger will receive all error messages generated during server operation.
+func (s *StdioServer) SetErrorLogger(logger *log.Logger) {
+	s.errLogger = logger
+}
 
-	// Create a context that's cancelled when we receive a signal
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle shutdown in a separate goroutine
-	go func() {
-		<-s.done
-		cancel()
-	}()
+// Listen starts listening for JSON-RPC messages on the provided input and writes responses to the provided output.
+// It runs until the context is cancelled or an error occurs.
+// Returns an error if there are issues with reading input or writing output.
+func (s *StdioServer) Listen(ctx context.Context, stdin io.Reader, stdout io.Writer) error {
+	reader := bufio.NewReader(stdin)
 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 		default:
 			// Use a goroutine to make the read cancellable
 			readChan := make(chan string, 1)
@@ -76,7 +63,7 @@ func (s *StdioServer) serve() error {
 
 			select {
 			case <-ctx.Done():
-				return nil
+				return ctx.Err()
 			case err := <-errChan:
 				if err == io.EOF {
 					return nil
@@ -84,23 +71,27 @@ func (s *StdioServer) serve() error {
 				s.errLogger.Printf("Error reading input: %v", err)
 				return err
 			case line := <-readChan:
-				if err := s.handleMessage(ctx, line); err != nil {
+				if err := s.processMessage(ctx, line, stdout); err != nil {
 					if err == io.EOF {
 						return nil
 					}
 					s.errLogger.Printf("Error handling message: %v", err)
+					return err
 				}
 			}
 		}
 	}
 }
 
-func (s *StdioServer) handleMessage(ctx context.Context, line string) error {
+// processMessage handles a single JSON-RPC message and writes the response.
+// It parses the message, processes it through the wrapped MCPServer, and writes any response.
+// Returns an error if there are issues with message processing or response writing.
+func (s *StdioServer) processMessage(ctx context.Context, line string, writer io.Writer) error {
 	// Parse the message as raw JSON
 	var rawMessage json.RawMessage
 	if err := json.Unmarshal([]byte(line), &rawMessage); err != nil {
 		response := createErrorResponse(nil, mcp.PARSE_ERROR, "Parse error")
-		return s.writeResponse(response)
+		return s.writeResponse(response, writer)
 	}
 
 	// Handle the message using the wrapped server
@@ -108,7 +99,7 @@ func (s *StdioServer) handleMessage(ctx context.Context, line string) error {
 
 	// Send the response if there is one (notifications don't have responses)
 	if response != nil {
-		if err := s.writeResponse(response); err != nil {
+		if err := s.writeResponse(response, writer); err != nil {
 			return fmt.Errorf("failed to write response: %w", err)
 		}
 	}
@@ -116,16 +107,40 @@ func (s *StdioServer) handleMessage(ctx context.Context, line string) error {
 	return nil
 }
 
-func (s *StdioServer) writeResponse(response mcp.JSONRPCMessage) error {
+// writeResponse marshals and writes a JSON-RPC response message followed by a newline.
+// Returns an error if marshaling or writing fails.
+func (s *StdioServer) writeResponse(response mcp.JSONRPCMessage, writer io.Writer) error {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		return err
 	}
 
 	// Write response followed by newline
-	if _, err := fmt.Fprintf(os.Stdout, "%s\n", responseBytes); err != nil {
+	if _, err := fmt.Fprintf(writer, "%s\n", responseBytes); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// ServeStdio is a convenience function that creates and starts a StdioServer with os.Stdin and os.Stdout.
+// It sets up signal handling for graceful shutdown on SIGTERM and SIGINT.
+// Returns an error if the server encounters any issues during operation.
+func ServeStdio(server *MCPServer) error {
+	s := NewStdioServer(server)
+	s.SetErrorLogger(log.New(os.Stderr, "", log.LstdFlags))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+
+	return s.Listen(ctx, os.Stdin, os.Stdout)
 }
