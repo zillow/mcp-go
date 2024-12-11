@@ -572,13 +572,10 @@ s.AddPrompt(mcp.NewPrompt("greeting",
     return mcp.NewGetPromptResult(
         "A friendly greeting",
         []mcp.PromptMessage{
-            {
-                Role: mcp.RoleAssistant,
-                Content: mcp.TextContent{
-                    Type: "text",
-                    Text: fmt.Sprintf("Hello, %s! How can I help you today?", name),
-                },
-            },
+            mcp.NewPromptMessage(
+                mcp.RoleAssistant,
+                mcp.NewTextContent(fmt.Sprintf("Hello, %s! How can I help you today?", name)),
+            ),
         },
     ), nil
 })
@@ -599,23 +596,17 @@ s.AddPrompt(mcp.NewPrompt("code_review",
     return mcp.NewGetPromptResult(
         "Code review assistance",
         []mcp.PromptMessage{
-            {
-                Role: mcp.RoleSystem,
-                Content: mcp.TextContent{
-                    Type: "text",
-                    Text: "You are a helpful code reviewer. Review the changes and provide constructive feedback.",
-                },
-            },
-            {
-                Role: mcp.RoleAssistant,
-                Content: mcp.EmbeddedResource{
-                    Type: "resource",
-                    Resource: mcp.ResourceContents{
-                        URI: fmt.Sprintf("git://pulls/%s/diff", prNumber),
-                        MIMEType: "text/x-diff",
-                    },
-                },
-            },
+            mcp.NewPromptMessage(
+                mcp.RoleSystem,
+                mcp.NewTextContent("You are a helpful code reviewer. Review the changes and provide constructive feedback."),
+            ),
+            mcp.NewPromptMessage(
+                mcp.RoleAssistant,
+                mcp.NewEmbeddedResource(mcp.ResourceContents{
+                    URI: fmt.Sprintf("git://pulls/%s/diff", prNumber),
+                    MIMEType: "text/x-diff",
+                }),
+            ),
         },
     ), nil
 })
@@ -636,23 +627,17 @@ s.AddPrompt(mcp.NewPrompt("query_builder",
     return mcp.NewGetPromptResult(
         "SQL query builder assistance",
         []mcp.PromptMessage{
-            {
-                Role: mcp.RoleSystem,
-                Content: mcp.TextContent{
-                    Type: "text",
-                    Text: "You are a SQL expert. Help construct efficient and safe queries.",
-                },
-            },
-            {
-                Role: mcp.RoleAssistant,
-                Content: mcp.EmbeddedResource{
-                    Type: "resource",
-                    Resource: mcp.ResourceContents{
-                        URI: fmt.Sprintf("db://schema/%s", tableName),
-                        MIMEType: "application/json",
-                    },
-                },
-            },
+            mcp.NewPromptMessage(
+                mcp.RoleSystem,
+                mcp.NewTextContent("You are a SQL expert. Help construct efficient and safe queries."),
+            ),
+            mcp.NewPromptMessage(
+                mcp.RoleAssistant,
+                mcp.NewEmbeddedResource(mcp.ResourceContents{
+                    URI: fmt.Sprintf("db://schema/%s", tableName),
+                    MIMEType: "application/json",
+                }),
+            ),
         },
     ), nil
 })
