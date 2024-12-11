@@ -308,6 +308,118 @@ func TestMCPServer_HandleNotifications(t *testing.T) {
 	assert.True(t, notificationReceived)
 }
 
+func TestMCPServer_PromptHandling(t *testing.T) {
+    server := NewMCPServer("test-server", "1.0.0",
+        WithPromptCapabilities(true),
+    )
+
+    // Add a test prompt
+    testPrompt := mcp.Prompt{
+        Name: "test-prompt",
+        Description: "A test prompt",
+        Arguments: []mcp.PromptArgument{
+            {
+                Name: "arg1",
+                Description: "First argument",
+            },
+        },
+    }
+    
+    server.AddPrompt(testPrompt, func(arguments map[string]string) (*mcp.GetPromptResult, error) {
+        return &mcp.GetPromptResult{
+            Messages: []mcp.PromptMessage{
+                {
+                    Role: mcp.RoleAssistant,
+                    Content: mcp.TextContent{
+                        Type: "text",
+                        Text: "Test prompt with arg1: " + arguments["arg1"],
+                    },
+                },
+            },
+        }, nil
+    })
+
+    tests := []struct {
+        name     string
+        message  string
+        validate func(t *testing.T, response mcp.JSONRPCMessage)
+    }{
+        {
+            name: "List prompts",
+            message: `{
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "prompts/list"
+            }`,
+            validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+                resp, ok := response.(mcp.JSONRPCResponse)
+                assert.True(t, ok)
+
+                result, ok := resp.Result.(mcp.ListPromptsResult)
+                assert.True(t, ok)
+                assert.Len(t, result.Prompts, 1)
+                assert.Equal(t, "test-prompt", result.Prompts[0].Name)
+                assert.Equal(t, "A test prompt", result.Prompts[0].Description)
+            },
+        },
+        {
+            name: "Get prompt",
+            message: `{
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "prompts/get",
+                "params": {
+                    "name": "test-prompt",
+                    "arguments": {
+                        "arg1": "test-value"
+                    }
+                }
+            }`,
+            validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+                resp, ok := response.(mcp.JSONRPCResponse)
+                assert.True(t, ok)
+
+                result, ok := resp.Result.(*mcp.GetPromptResult)
+                assert.True(t, ok)
+                assert.Len(t, result.Messages, 1)
+                textContent, ok := result.Messages[0].Content.(mcp.TextContent)
+                assert.True(t, ok)
+                assert.Equal(t, "Test prompt with arg1: test-value", textContent.Text)
+            },
+        },
+        {
+            name: "Get prompt with missing argument",
+            message: `{
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "prompts/get",
+                "params": {
+                    "name": "test-prompt",
+                    "arguments": {}
+                }
+            }`,
+            validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+                resp, ok := response.(mcp.JSONRPCResponse)
+                assert.True(t, ok)
+
+                result, ok := resp.Result.(*mcp.GetPromptResult)
+                assert.True(t, ok)
+                assert.Len(t, result.Messages, 1)
+                textContent, ok := result.Messages[0].Content.(mcp.TextContent)
+                assert.True(t, ok)
+                assert.Equal(t, "Test prompt with arg1: ", textContent.Text)
+            },
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            response := server.HandleMessage(context.Background(), []byte(tt.message))
+            tt.validate(t, response)
+        })
+    }
+}
+
 func TestMCPServer_HandleInvalidMessages(t *testing.T) {
 	server := NewMCPServer("test-server", "1.0.0")
 
