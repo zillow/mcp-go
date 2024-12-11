@@ -1,11 +1,11 @@
 // Package server provides MCP (Model Control Protocol) server implementations.
-// Package server provides MCP (Model Control Protocol) server implementations.
 package server
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -34,7 +34,8 @@ type MCPServer struct {
 	version           string
 	resources         map[string]ResourceHandlerFunc
 	resourceTemplates map[string]ResourceTemplateHandlerFunc
-	prompts           map[string]PromptHandlerFunc
+	prompts           map[string]mcp.Prompt
+	promptHandlers    map[string]PromptHandlerFunc
 	tools             map[string]mcp.Tool
 	toolHandlers      map[string]ToolHandlerFunc
 	notifications     []NotificationHandlerFunc
@@ -93,7 +94,8 @@ func NewMCPServer(
 	s := &MCPServer{
 		resources:         make(map[string]ResourceHandlerFunc),
 		resourceTemplates: make(map[string]ResourceTemplateHandlerFunc),
-		prompts:           make(map[string]PromptHandlerFunc),
+		prompts:           make(map[string]mcp.Prompt),
+		promptHandlers:    make(map[string]PromptHandlerFunc),
 		tools:             make(map[string]mcp.Tool),
 		toolHandlers:      make(map[string]ToolHandlerFunc),
 		name:              name,
@@ -315,12 +317,14 @@ func (s *MCPServer) AddResourceTemplate(
 	s.resourceTemplates[uriTemplate] = handler
 }
 
+
 // AddPrompt registers a new prompt handler with the given name
-func (s *MCPServer) AddPrompt(name string, handler PromptHandlerFunc) {
+func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler PromptHandlerFunc) {
 	if s.capabilities.prompts == nil {
 		panic("Prompt capabilities not enabled")
 	}
-	s.prompts[name] = handler
+	s.prompts[prompt.Name] = prompt
+	s.promptHandlers[prompt.Name] = handler
 }
 
 // AddTool registers a new tool and its handler
@@ -476,10 +480,8 @@ func (s *MCPServer) handleListPrompts(
 	request mcp.ListPromptsRequest,
 ) mcp.JSONRPCMessage {
 	prompts := make([]mcp.Prompt, 0, len(s.prompts))
-	for name := range s.prompts {
-		prompts = append(prompts, mcp.Prompt{
-			Name: name,
-		})
+	for _, prompt := range s.prompts {
+		prompts = append(prompts, prompt)
 	}
 
 	result := mcp.ListPromptsResult{
@@ -495,7 +497,7 @@ func (s *MCPServer) handleGetPrompt(
 	id interface{},
 	request mcp.GetPromptRequest,
 ) mcp.JSONRPCMessage {
-	handler, ok := s.prompts[request.Params.Name]
+	handler, ok := s.promptHandlers[request.Params.Name]
 	if !ok {
 		return createErrorResponse(
 			id,
