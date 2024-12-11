@@ -2,73 +2,45 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"io"
 	"log"
-	"os"
 	"testing"
 )
 
 func TestStdioServer(t *testing.T) {
 	t.Run("Can instantiate", func(t *testing.T) {
 		mcpServer := NewMCPServer("test", "1.0.0")
-		stdioServer := &StdioServer{
-			server:    mcpServer,
-			sigChan:   make(chan os.Signal, 1),
-			errLogger: log.New(os.Stderr, "", log.LstdFlags),
-			done:      make(chan struct{}),
-		}
+		stdioServer := NewStdioServer(mcpServer)
 
 		if stdioServer.server == nil {
 			t.Error("MCPServer should not be nil")
 		}
-		if stdioServer.sigChan == nil {
-			t.Error("sigChan should not be nil")
-		}
 		if stdioServer.errLogger == nil {
 			t.Error("errLogger should not be nil")
-		}
-		if stdioServer.done == nil {
-			t.Error("done channel should not be nil")
 		}
 	})
 
 	t.Run("Can send and receive messages", func(t *testing.T) {
-		// Save original stdin/stdout
-		oldStdin := os.Stdin
-		oldStdout := os.Stdout
-		defer func() {
-			os.Stdin = oldStdin
-			os.Stdout = oldStdout
-		}()
-
 		// Create pipes for stdin and stdout
-		stdinReader, stdinWriter, err := os.Pipe()
-		if err != nil {
-			t.Fatal(err)
-		}
-		stdoutReader, stdoutWriter, err := os.Pipe()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Set stdin and stdout to our pipes
-		os.Stdin = stdinReader
-		os.Stdout = stdoutWriter
+		stdinReader, stdinWriter := io.Pipe()
+		stdoutReader, stdoutWriter := io.Pipe()
 
 		// Create server
 		mcpServer := NewMCPServer("test", "1.0.0",
 			WithResourceCapabilities(true, true),
 		)
-		stdioServer := &StdioServer{
-			server:    mcpServer,
-			sigChan:   make(chan os.Signal, 1),
-			errLogger: log.New(os.Stderr, "", log.LstdFlags),
-			done:      make(chan struct{}),
-		}
+		stdioServer := NewStdioServer(mcpServer)
+		stdioServer.SetErrorLogger(log.New(io.Discard, "", 0))
+
+		// Create context with cancel
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
 		// Start server in goroutine
 		go func() {
-			if err := stdioServer.serve(); err != nil {
+			if err := stdioServer.Listen(ctx, stdinReader, stdoutWriter); err != nil && err != io.EOF {
 				t.Errorf("server error: %v", err)
 			}
 		}()
@@ -88,15 +60,19 @@ func TestStdioServer(t *testing.T) {
 		}
 
 		// Send request
-		requestBytes, err := json.Marshal(initRequest)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = stdinWriter.Write(append(requestBytes, '\n'))
-		if err != nil {
-			t.Fatal(err)
-		}
-		stdinWriter.Close() // Close the writer after sending the message
+		go func() {
+			requestBytes, err := json.Marshal(initRequest)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			_, err = stdinWriter.Write(append(requestBytes, '\n'))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			stdinWriter.Close() // Close the writer after sending the message
+		}()
 
 		// Read response
 		scanner := bufio.NewScanner(stdoutReader)
@@ -128,7 +104,7 @@ func TestStdioServer(t *testing.T) {
 		}
 
 		// Clean up
-		close(stdioServer.done)
+		cancel()
 		stdoutWriter.Close()
 	})
 }

@@ -17,49 +17,30 @@ import (
 // StdioServer wraps a MCPServer and handles stdio communication
 type StdioServer struct {
 	server    *MCPServer
-	sigChan   chan os.Signal
 	errLogger *log.Logger
-	done      chan struct{}
 }
 
-// ServeStdio creates a stdio server wrapper around an existing MCPServer
-func ServeStdio(server *MCPServer) error {
-	s := &StdioServer{
+// NewStdioServer creates a new stdio server wrapper around an MCPServer
+func NewStdioServer(server *MCPServer) *StdioServer {
+	return &StdioServer{
 		server:    server,
-		sigChan:   make(chan os.Signal, 1),
-		errLogger: log.New(os.Stderr, "", log.LstdFlags),
-		done:      make(chan struct{}),
+		errLogger: log.New(io.Discard, "", log.LstdFlags), // Default to discarding logs
 	}
-
-	// Set up signal handling
-	signal.Notify(s.sigChan, syscall.SIGTERM, syscall.SIGINT)
-
-	// Handle shutdown in a separate goroutine
-	go func() {
-		<-s.sigChan
-		close(s.done)
-	}()
-
-	return s.serve()
 }
 
-func (s *StdioServer) serve() error {
-	reader := bufio.NewReader(os.Stdin)
+// SetErrorLogger allows configuring where errors are logged
+func (s *StdioServer) SetErrorLogger(logger *log.Logger) {
+	s.errLogger = logger
+}
 
-	// Create a context that's cancelled when we receive a signal
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle shutdown in a separate goroutine
-	go func() {
-		<-s.done
-		cancel()
-	}()
+// Listen starts listening for messages on the provided input and writes responses to the provided output
+func (s *StdioServer) Listen(ctx context.Context, stdin io.Reader, stdout io.Writer) error {
+	reader := bufio.NewReader(stdin)
 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 		default:
 			// Use a goroutine to make the read cancellable
 			readChan := make(chan string, 1)
@@ -76,7 +57,7 @@ func (s *StdioServer) serve() error {
 
 			select {
 			case <-ctx.Done():
-				return nil
+				return ctx.Err()
 			case err := <-errChan:
 				if err == io.EOF {
 					return nil
@@ -84,23 +65,25 @@ func (s *StdioServer) serve() error {
 				s.errLogger.Printf("Error reading input: %v", err)
 				return err
 			case line := <-readChan:
-				if err := s.handleMessage(ctx, line); err != nil {
+				if err := s.processMessage(ctx, line, stdout); err != nil {
 					if err == io.EOF {
 						return nil
 					}
 					s.errLogger.Printf("Error handling message: %v", err)
+					return err
 				}
 			}
 		}
 	}
 }
 
-func (s *StdioServer) handleMessage(ctx context.Context, line string) error {
+// processMessage handles a single message and writes the response
+func (s *StdioServer) processMessage(ctx context.Context, line string, writer io.Writer) error {
 	// Parse the message as raw JSON
 	var rawMessage json.RawMessage
 	if err := json.Unmarshal([]byte(line), &rawMessage); err != nil {
 		response := createErrorResponse(nil, mcp.PARSE_ERROR, "Parse error")
-		return s.writeResponse(response)
+		return s.writeResponse(response, writer)
 	}
 
 	// Handle the message using the wrapped server
@@ -108,7 +91,7 @@ func (s *StdioServer) handleMessage(ctx context.Context, line string) error {
 
 	// Send the response if there is one (notifications don't have responses)
 	if response != nil {
-		if err := s.writeResponse(response); err != nil {
+		if err := s.writeResponse(response, writer); err != nil {
 			return fmt.Errorf("failed to write response: %w", err)
 		}
 	}
@@ -116,16 +99,36 @@ func (s *StdioServer) handleMessage(ctx context.Context, line string) error {
 	return nil
 }
 
-func (s *StdioServer) writeResponse(response mcp.JSONRPCMessage) error {
+func (s *StdioServer) writeResponse(response mcp.JSONRPCMessage, writer io.Writer) error {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		return err
 	}
 
 	// Write response followed by newline
-	if _, err := fmt.Fprintf(os.Stdout, "%s\n", responseBytes); err != nil {
+	if _, err := fmt.Fprintf(writer, "%s\n", responseBytes); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// ServeStdio is a convenience function that creates and starts a StdioServer with os.Stdin and os.Stdout
+func ServeStdio(server *MCPServer) error {
+	s := NewStdioServer(server)
+	s.SetErrorLogger(log.New(os.Stderr, "", log.LstdFlags))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+
+	return s.Listen(ctx, os.Stdin, os.Stdout)
 }
