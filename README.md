@@ -204,7 +204,8 @@ if err := server.ServeStdio(s); err != nil {
 ### Resources
 
 <details>
-<summary>Resources are how you expose data to LLMs. They can be anything - files, API responses, database queries, system information, etc. Resources can be:</summary>
+<summary>Show Resource Examples</summary>
+Resources are how you expose data to LLMs. They can be anything - files, API responses, database queries, system information, etc. Resources can be:
 
 - Static (fixed URI)
 - Dynamic (using URI templates)
