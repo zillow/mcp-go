@@ -203,7 +203,8 @@ if err := server.ServeStdio(s); err != nil {
 
 ### Resources
 
-Resources are how you expose data to LLMs. They can be anything - files, API responses, database queries, system information, etc. Resources can be:
+<details>
+<summary>Resources are how you expose data to LLMs. They can be anything - files, API responses, database queries, system information, etc. Resources can be:</summary>
 
 - Static (fixed URI)
 - Dynamic (using URI templates)
@@ -273,6 +274,7 @@ s.AddResourceTemplate(template, func(ctx context.Context, args map[string]interf
 ```
 
 The examples are simple but demonstrate the core concepts. Resources can be much more sophisticated - serving multiple contents, using annotations, integrating with databases or external APIs, etc.
+</details>
 
 ### Tools
 
