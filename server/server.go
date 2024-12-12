@@ -5,18 +5,31 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
+
+// resourceEntry holds both a resource and its handler
+type resourceEntry struct {
+	resource mcp.Resource
+	handler  ResourceHandlerFunc
+}
+
+// resourceTemplateEntry holds both a template and its handler
+type resourceTemplateEntry struct {
+	template mcp.ResourceTemplate
+	handler  ResourceTemplateHandlerFunc
+}
 
 // ServerOption is a function that configures an MCPServer.
 type ServerOption func(*MCPServer)
 
 // ResourceHandlerFunc is a function that returns resource contents.
-type ResourceHandlerFunc func(arguments map[string]interface{}) ([]interface{}, error)
+type ResourceHandlerFunc func(request mcp.ReadResourceRequest) ([]interface{}, error)
 
 // ResourceTemplateHandlerFunc is a function that returns a resource template.
-type ResourceTemplateHandlerFunc func(arguments map[string]interface{}) (mcp.ResourceTemplate, error)
+type ResourceTemplateHandlerFunc func(request mcp.ReadResourceRequest) ([]interface{}, error)
 
 // PromptHandlerFunc handles prompt requests with given arguments.
 type PromptHandlerFunc func(arguments map[string]string) (*mcp.GetPromptResult, error)
@@ -32,8 +45,8 @@ type NotificationHandlerFunc func(notification mcp.JSONRPCNotification)
 type MCPServer struct {
 	name              string
 	version           string
-	resources         map[string]ResourceHandlerFunc
-	resourceTemplates map[string]ResourceTemplateHandlerFunc
+	resources         map[string]resourceEntry
+	resourceTemplates map[string]resourceTemplateEntry
 	prompts           map[string]mcp.Prompt
 	promptHandlers    map[string]PromptHandlerFunc
 	tools             map[string]mcp.Tool
@@ -92,8 +105,8 @@ func NewMCPServer(
 	opts ...ServerOption,
 ) *MCPServer {
 	s := &MCPServer{
-		resources:         make(map[string]ResourceHandlerFunc),
-		resourceTemplates: make(map[string]ResourceTemplateHandlerFunc),
+		resources:         make(map[string]resourceEntry),
+		resourceTemplates: make(map[string]resourceTemplateEntry),
 		prompts:           make(map[string]mcp.Prompt),
 		promptHandlers:    make(map[string]PromptHandlerFunc),
 		tools:             make(map[string]mcp.Tool),
@@ -298,25 +311,33 @@ func (s *MCPServer) HandleMessage(
 	}
 }
 
-// AddResource registers a new resource handler for the given URI
-func (s *MCPServer) AddResource(uri string, handler ResourceHandlerFunc) {
+// AddResource registers a new resource and its handler
+func (s *MCPServer) AddResource(
+	resource mcp.Resource,
+	handler ResourceHandlerFunc,
+) {
 	if s.capabilities.resources == nil {
 		panic("Resource capabilities not enabled")
 	}
-	s.resources[uri] = handler
+	s.resources[resource.URI] = resourceEntry{
+		resource: resource,
+		handler:  handler,
+	}
 }
 
-// AddResourceTemplate registers a new resource template handler for the given URI template
+// AddResourceTemplate registers a new resource template and its handler
 func (s *MCPServer) AddResourceTemplate(
-	uriTemplate string,
+	template mcp.ResourceTemplate,
 	handler ResourceTemplateHandlerFunc,
 ) {
 	if s.capabilities.resources == nil {
 		panic("Resource capabilities not enabled")
 	}
-	s.resourceTemplates[uriTemplate] = handler
+	s.resourceTemplates[template.URITemplate] = resourceTemplateEntry{
+		template: template,
+		handler:  handler,
+	}
 }
-
 
 // AddPrompt registers a new prompt handler with the given name
 func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler PromptHandlerFunc) {
@@ -401,10 +422,8 @@ func (s *MCPServer) handleListResources(
 	request mcp.ListResourcesRequest,
 ) mcp.JSONRPCMessage {
 	resources := make([]mcp.Resource, 0, len(s.resources))
-	for uri := range s.resources {
-		resources = append(resources, mcp.Resource{
-			URI: uri,
-		})
+	for _, entry := range s.resources {
+		resources = append(resources, entry.resource)
 	}
 
 	result := mcp.ListResourcesResult{
@@ -419,25 +438,10 @@ func (s *MCPServer) handleListResources(
 func (s *MCPServer) handleListResourceTemplates(
 	id interface{},
 	request mcp.ListResourceTemplatesRequest,
-) mcp.
-	JSONRPCMessage {
+) mcp.JSONRPCMessage {
 	templates := make([]mcp.ResourceTemplate, 0, len(s.resourceTemplates))
-	for uriTemplate, handler := range s.resourceTemplates {
-		template, err := handler(nil)
-		if err != nil {
-			return createErrorResponse(
-				id,
-				mcp.INTERNAL_ERROR,
-				fmt.Sprintf(
-					"Error getting template for %s: %v",
-					uriTemplate,
-					err,
-				),
-			)
-		}
-
-		template.URITemplate = uriTemplate
-		templates = append(templates, template)
+	for _, entry := range s.resourceTemplates {
+		templates = append(templates, entry.template)
 	}
 
 	result := mcp.ListResourceTemplatesResult{
@@ -453,26 +457,51 @@ func (s *MCPServer) handleReadResource(
 	id interface{},
 	request mcp.ReadResourceRequest,
 ) mcp.JSONRPCMessage {
-	handler, ok := s.resources[request.Params.URI]
-	if !ok {
-		return createErrorResponse(
-			id,
-			mcp.INVALID_PARAMS,
-			fmt.Sprintf("No handler found for resource URI: %s", request.Params.
-				URI),
-		)
+	// First try direct resource handlers
+	if entry, ok := s.resources[request.Params.URI]; ok {
+		contents, err := entry.handler(request)
+		if err != nil {
+			return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
+		}
+		return createResponse(id, mcp.ReadResourceResult{Contents: contents})
 	}
 
-	contents, err := handler(request.Params.Arguments)
-	if err != nil {
-		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
+	// If no direct handler found, try matching against templates
+	for uriTemplate, entry := range s.resourceTemplates {
+		if matchesTemplate(request.Params.URI, uriTemplate) {
+			contents, err := entry.handler(request)
+			if err != nil {
+				return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
+			}
+			return createResponse(
+				id,
+				mcp.ReadResourceResult{Contents: contents},
+			)
+		}
 	}
 
-	result := mcp.ReadResourceResult{
-		Contents: contents,
-	}
+	return createErrorResponse(
+		id,
+		mcp.INVALID_PARAMS,
+		fmt.Sprintf(
+			"No handler found for resource URI: %s",
+			request.Params.URI,
+		),
+	)
+}
 
-	return createResponse(id, result)
+// matchesTemplate checks if a URI matches a URI template pattern
+func matchesTemplate(uri string, template string) bool {
+	// Convert template into a regex pattern
+	pattern := template
+	// Replace {name} with ([^/]+)
+	pattern = regexp.QuoteMeta(pattern)
+	pattern = regexp.MustCompile(`\\\{[^}]+\\\}`).
+		ReplaceAllString(pattern, `([^/]+)`)
+	pattern = "^" + pattern + "$"
+
+	matched, _ := regexp.MatchString(pattern, uri)
+	return matched
 }
 
 func (s *MCPServer) handleListPrompts(

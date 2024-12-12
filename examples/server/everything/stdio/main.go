@@ -47,9 +47,15 @@ func NewMCPServer() *MCPServer {
 		allResources:  generateResources(),
 	}
 
-	s.server.AddResource("test://static/resource/", s.handleReadResource)
+	s.server.AddResource(mcp.Resource{
+		URI:  "test://static/resource",
+		Name: "Static Resource",
+	}, s.handleReadResource)
 	s.server.AddResourceTemplate(
-		"test://static/resource/{id}",
+		mcp.ResourceTemplate{
+			URITemplate: "test://dynamoc/resource/{id}",
+			Name:        "Dynamic Resource",
+		},
 		s.handleResourceTemplate,
 	)
 	s.server.AddPrompt(mcp.NewPrompt(string(SIMPLE),
@@ -84,8 +90,11 @@ func NewMCPServer() *MCPServer {
 			mcp.Required(),
 		),
 	), s.handleAddTool)
-	s.server.AddTool(mcp.NewTool(string(LONG_RUNNING_OPERATION),
-		mcp.WithDescription("Demonstrates a long running operation with progress updates"),
+	s.server.AddTool(mcp.NewTool(
+		string(LONG_RUNNING_OPERATION),
+		mcp.WithDescription(
+			"Demonstrates a long running operation with progress updates",
+		),
 		mcp.WithNumber("duration",
 			mcp.Description("Duration of the operation in seconds"),
 			mcp.DefaultNumber(10),
@@ -95,6 +104,7 @@ func NewMCPServer() *MCPServer {
 			mcp.DefaultNumber(5),
 		),
 	), s.handleLongRunningOperationTool)
+
 	// s.server.AddTool(mcp.Tool{
 	// 	Name:        string(SAMPLE_LLM),
 	// 	Description: "Samples from an LLM using MCP's sampling feature",
@@ -167,12 +177,12 @@ func (s *MCPServer) runUpdateInterval() {
 }
 
 func (s *MCPServer) handleReadResource(
-	arguments map[string]interface{},
+	request mcp.ReadResourceRequest,
 ) ([]interface{}, error) {
 	return []interface{}{
 		mcp.TextResourceContents{
 			ResourceContents: mcp.ResourceContents{
-				URI:      "test://static/resource/1",
+				URI:      "test://static/resource",
 				MIMEType: "text/plain",
 			},
 			Text: "This is a sample resource",
@@ -181,12 +191,16 @@ func (s *MCPServer) handleReadResource(
 }
 
 func (s *MCPServer) handleResourceTemplate(
-	arguments map[string]interface{},
-) (mcp.ResourceTemplate, error) {
-	return mcp.ResourceTemplate{
-		URITemplate: "test://static/resource/{id}",
-		Name:        "Static Resource",
-		Description: "A static resource with a numeric ID",
+	request mcp.ReadResourceRequest,
+) ([]interface{}, error) {
+	return []interface{}{
+		mcp.TextResourceContents{
+			ResourceContents: mcp.ResourceContents{
+				URI:      request.Params.URI,
+				MIMEType: "text/plain",
+			},
+			Text: "This is a sample resource",
+		},
 	}, nil
 }
 
