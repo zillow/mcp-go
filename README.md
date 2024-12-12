@@ -203,154 +203,76 @@ if err := server.ServeStdio(s); err != nil {
 
 ### Resources
 
-<details>
-<summary>Show Resource Examples</summary>
+Resources are how you expose data to LLMs. They can be anything - files, API responses, database queries, system information, etc. Resources can be:
 
-Resources are how you expose data to LLMs. They're similar to GET endpoints in a REST API - they provide data but shouldn't perform significant computation or have side effects. Some examples:
+- Static (fixed URI)
+- Dynamic (using URI templates)
 
-- File contents
-- Database schemas
-- API responses
-- System information
+Here's a simple example of a static resource:
 
-Resources can be static:
 ```go
-// Static text resource
-s.AddResource("test://docs/readme", func() ([]interface{}, error) {
+// Static resource example - exposing a README file
+resource := mcp.NewResource(
+    "docs://readme",
+    "Project README",
+    mcp.WithResourceDescription("The project's README file"), 
+    mcp.WithMIMEType("text/markdown"),
+    mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.8),
+)
+
+// Add resource with its handler
+s.AddResource(resource, func(ctx context.Context) ([]interface{}, error) {
+    content, err := os.ReadFile("README.md")
+    if err != nil {
+        return nil, err
+    }
+    
     return []interface{}{
         mcp.TextResourceContents{
             ResourceContents: mcp.ResourceContents{
-                URI:      "test://docs/readme",
+                URI:      "docs://readme",
                 MIMEType: "text/markdown",
             },
-            Text: "# Project Documentation\nThis is the main documentation...",
-        },
-    }, nil
-})
-
-// Binary/blob resource (e.g., image)
-s.AddResource("test://images/logo", func() ([]interface{}, error) {
-    imageData, err := os.ReadFile("logo.png")
-    if err != nil {
-        return nil, err
-    }
-    
-    return []interface{}{
-        mcp.BlobResourceContents{
-            ResourceContents: mcp.ResourceContents{
-                URI:      "test://images/logo",
-                MIMEType: "image/png",
-            },
-            Blob: base64.StdEncoding.EncodeToString(imageData),
-        },
-    }, nil
-})
-
-// Dynamic resource that fetches data
-s.AddResource("test://api/weather", func() ([]interface{}, error) {
-    weather, err := fetchWeatherData()
-    if err != nil {
-        return nil, err
-    }
-    
-    return []interface{}{
-        mcp.TextResourceContents{
-            ResourceContents: mcp.ResourceContents{
-                URI:      "test://api/weather",
-                MIMEType: "application/json",
-            },
-            Text: weather,
-        },
-    }, nil
-})
-
-// Resource with multiple contents
-s.AddResource("test://report", func() ([]interface{}, error) {
-    return []interface{}{
-        mcp.TextResourceContents{
-            ResourceContents: mcp.ResourceContents{
-                URI:      "test://report/summary",
-                MIMEType: "text/plain",
-            },
-            Text: "Monthly sales increased by 15%",
-        },
-        mcp.TextResourceContents{
-            ResourceContents: mcp.ResourceContents{
-                URI:      "test://report/details",
-                MIMEType: "application/json",
-            },
-            Text: `{"sales": {"january": 100, "february": 115}}`,
-        },
-    }, nil
-})
-
-// Resource template for dynamic paths
-s.AddResourceTemplate("test://users/{id}/profile", func() (mcp.ResourceTemplate, error) {
-    return mcp.ResourceTemplate{
-        Name:        "User Profile",
-        Description: "Returns user profile information",
-        MIMEType:    "application/json",
-    }, nil
-})
-
-// Resource with metadata
-s.AddResource("test://docs/api", func() ([]interface{}, error) {
-    return []interface{}{
-        mcp.TextResourceContents{
-            ResourceContents: mcp.ResourceContents{
-                URI:      "test://docs/api",
-                MIMEType: "text/markdown",
-            },
-            Text: "## API Documentation\n...",
-            // Add annotations for the LLM
-            Annotated: mcp.Annotated{
-                Annotations: &struct {
-                    Audience []mcp.Role  `json:"audience,omitempty"`
-                    Priority float64     `json:"priority,omitempty"`
-                }{
-                    Audience: []mcp.Role{mcp.RoleAssistant},
-                    Priority: 0.8,
-                },
-            },
-        },
-    }, nil
-})
-
-// Database-backed resource
-s.AddResource("test://db/products", func() ([]interface{}, error) {
-    products, err := db.QueryProducts()
-    if err != nil {
-        return nil, err
-    }
-    
-    productsJSON, err := json.Marshal(products)
-    if err != nil {
-        return nil, err
-    }
-    
-    return []interface{}{
-        mcp.TextResourceContents{
-            ResourceContents: mcp.ResourceContents{
-                URI:      "test://db/products",
-                MIMEType: "application/json",
-            },
-            Text: string(productsJSON),
+            Text: string(content),
         },
     }, nil
 })
 ```
 
-</details>
+And here's an example of a dynamic resource using a template:
 
-Resources can be:
-- Static or dynamic
-- Text or binary  
-- Single or multi-part
-- Template-based for dynamic paths
-- Annotated with metadata
-- Backed by various data sources
+```go
+// Dynamic resource example - user profiles by ID
+template := mcp.NewResourceTemplate(
+    "users://{id}/profile",
+    "User Profile",
+    mcp.WithTemplateDescription("Returns user profile information"),
+    mcp.WithTemplateMIMEType("application/json"),
+    mcp.WithTemplateAnnotations([]mcp.Role{mcp.RoleAssistant, mcp.RoleUser}, 0.5),
+)
 
-The URI scheme (e.g., `test://`) is arbitrary - you can use any scheme that makes sense for your application. The handler function is called whenever the resource is requested, allowing for dynamic content generation.
+// Add template with its handler
+s.AddResourceTemplate(template, func(ctx context.Context, args map[string]interface{}) ([]interface{}, error) {
+    userID := args["id"].(string)
+    
+    profile, err := getUserProfile(userID)  // Your DB/API call here
+    if err != nil {
+        return nil, err
+    }
+    
+    return []interface{}{
+        mcp.TextResourceContents{
+            ResourceContents: mcp.ResourceContents{
+                URI:      fmt.Sprintf("users://%s/profile", userID),
+                MIMEType: "application/json",
+            },
+            Text: profile,
+        },
+    }, nil
+})
+```
+
+The examples are simple but demonstrate the core concepts. Resources can be much more sophisticated - serving multiple contents, using annotations, integrating with databases or external APIs, etc.
 
 ### Tools
 

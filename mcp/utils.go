@@ -179,16 +179,6 @@ func NewLoggingMessageNotification(
 	}
 }
 
-// Helper function to create a new Resource
-func NewResource(uri, name, description, mimeType string) Resource {
-	return Resource{
-		URI:         uri,
-		Name:        name,
-		Description: description,
-		MIMEType:    mimeType,
-	}
-}
-
 // Helper function to create a new PromptMessage
 func NewPromptMessage(role Role, content interface{}) PromptMessage {
 	return PromptMessage{

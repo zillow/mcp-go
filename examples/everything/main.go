@@ -47,15 +47,15 @@ func NewMCPServer() *MCPServer {
 		allResources:  generateResources(),
 	}
 
-	s.server.AddResource(mcp.Resource{
-		URI:  "test://static/resource",
-		Name: "Static Resource",
-	}, s.handleReadResource)
+	s.server.AddResource(mcp.NewResource("test://static/resource",
+		"Static Resource",
+		mcp.WithMIMEType("text/plain"),
+	), s.handleReadResource)
 	s.server.AddResourceTemplate(
-		mcp.ResourceTemplate{
-			URITemplate: "test://dynamoc/resource/{id}",
-			Name:        "Dynamic Resource",
-		},
+		mcp.NewResourceTemplate(
+			"test://dynamic/resource/{id}",
+			"Dynamic Resource",
+		),
 		s.handleResourceTemplate,
 	)
 	s.server.AddPrompt(mcp.NewPrompt(string(SIMPLE),
