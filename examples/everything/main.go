@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -353,7 +352,6 @@ func (s *MCPServer) handleLongRunningOperationTool(
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	arguments := request.Params.Arguments
-	fmt.Fprintln(os.Stderr, request)
 	progressToken := request.Params.Meta.ProgressToken
 	duration, _ := arguments["duration"].(float64)
 	steps, _ := arguments["steps"].(float64)
