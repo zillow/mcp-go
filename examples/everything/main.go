@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -352,32 +353,24 @@ func (s *MCPServer) handleLongRunningOperationTool(
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	arguments := request.Params.Arguments
+	fmt.Fprintln(os.Stderr, request)
+	progressToken := request.Params.Meta.ProgressToken
 	duration, _ := arguments["duration"].(float64)
 	steps, _ := arguments["steps"].(float64)
 	stepDuration := duration / steps
-	progressToken, _ := arguments["_meta"].(map[string]interface{})["progressToken"].(mcp.ProgressToken)
+	server := server.ServerFromContext(ctx)
 
 	for i := 1; i < int(steps)+1; i++ {
 		time.Sleep(time.Duration(stepDuration * float64(time.Second)))
 		if progressToken != nil {
-			// 	s.server.HandleMessage(
-			// 		context.Background(),
-			// 		mcp.JSONRPCNotification{
-			// 			JSONRPC: mcp.JSONRPC_VERSION,
-			// 			Notification: mcp.Notification{
-			// 				Method: "progress",
-			// 				Params: struct {
-			// 					Meta map[string]interface{} `json:"_meta,omitempty"`
-			// 				}{
-			// 					Meta: map[string]interface{}{
-			// 						"progress":      i,
-			// 						"total":         int(steps),
-			// 						"progressToken": progressToken,
-			// 					},
-			// 				},
-			// 			},
-			// 		},
-			// 	)
+			server.SendNotificationToClient(
+				"notifications/progress",
+				map[string]interface{}{
+					"progress":      i,
+					"total":         int(steps),
+					"progressToken": progressToken,
+				},
+			)
 		}
 	}
 
