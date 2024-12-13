@@ -36,9 +36,12 @@ type StdioMCPClient struct {
 // Returns an error if the subprocess cannot be started or the pipes cannot be created.
 func NewStdioMCPClient(
 	command string,
+	env []string,
 	args ...string,
 ) (*StdioMCPClient, error) {
 	cmd := exec.Command(command, args...)
+
+	cmd.Env = env
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

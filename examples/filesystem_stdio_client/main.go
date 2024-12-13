@@ -16,6 +16,7 @@ func main() {
 	// Using npx to run the filesystem server with /tmp as the only allowed directory
 	c, err := client.NewStdioMCPClient(
 		"go",
+		[]string{}, // Empty ENV
 		"run",
 		"github.com/mark3labs/mcp-filesystem-server@latest",
 		"/tmp",
