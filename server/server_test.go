@@ -67,7 +67,7 @@ func TestMCPServer_Capabilities(t *testing.T) {
 						Type:       "object",
 						Properties: map[string]interface{}{},
 					},
-				}, func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+				}, func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
 					return &mcp.CallToolResult{}, nil
 				})
 
@@ -88,7 +88,7 @@ func TestMCPServer_Capabilities(t *testing.T) {
 						Type:       "object",
 						Properties: map[string]interface{}{},
 					},
-				}, func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+				}, func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
 					return &mcp.CallToolResult{}, nil
 				})
 
@@ -294,7 +294,7 @@ func TestMCPServer_HandleNotifications(t *testing.T) {
 	server := createTestServer()
 	notificationReceived := false
 
-	server.AddNotificationHandler("notifications/initialized", func(notification mcp.JSONRPCNotification) {
+	server.AddNotificationHandler("notifications/initialized", func(ctx context.Context, notification mcp.JSONRPCNotification) {
 		notificationReceived = true
 	})
 
@@ -327,7 +327,7 @@ func TestMCPServer_PromptHandling(t *testing.T) {
 
 	server.AddPrompt(
 		testPrompt,
-		func(arguments map[string]string) (*mcp.GetPromptResult, error) {
+		func(ctx context.Context, arguments map[string]string) (*mcp.GetPromptResult, error) {
 			return &mcp.GetPromptResult{
 				Messages: []mcp.PromptMessage{
 					{
@@ -489,7 +489,7 @@ func TestMCPServer_HandleUndefinedHandlers(t *testing.T) {
 			Type:       "object",
 			Properties: map[string]interface{}{},
 		},
-	}, func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	}, func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
 		return &mcp.CallToolResult{}, nil
 	})
 
@@ -628,7 +628,7 @@ func createTestServer() *MCPServer {
 			URI:  "resource://testresource",
 			Name: "My Resource",
 		},
-		func(request mcp.ReadResourceRequest) ([]interface{}, error) {
+		func(ctx context.Context, request mcp.ReadResourceRequest) ([]interface{}, error) {
 			return []interface{}{
 				mcp.TextResourceContents{
 					ResourceContents: mcp.ResourceContents{
@@ -646,7 +646,7 @@ func createTestServer() *MCPServer {
 			Name:        "test-tool",
 			Description: "Test tool",
 		},
-		func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+		func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{
 				Content: []interface{}{
 					mcp.TextContent{

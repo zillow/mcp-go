@@ -26,7 +26,7 @@ func TestSSEMCPClient(t *testing.T) {
 			Type:       "object",
 			Properties: map[string]interface{}{},
 		},
-	}, func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	}, func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
 		return &mcp.CallToolResult{}, nil
 	})
 

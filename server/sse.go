@@ -120,6 +120,26 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 	s.sessions.Store(sessionID, session)
 	defer s.sessions.Delete(sessionID)
 
+	// Start notification handler for this session
+	go func() {
+		for {
+			select {
+			case serverNotification := <-s.server.notifications:
+				// Only forward notifications meant for this session
+				if serverNotification.Context.SessionID == sessionID {
+					s.SendEventToSession(
+						sessionID,
+						serverNotification.Notification,
+					)
+				}
+			case <-session.done:
+				return
+			case <-r.Context().Done():
+				return
+			}
+		}
+	}()
+
 	messageEndpoint := fmt.Sprintf(
 		"%s/message?sessionId=%s",
 		s.baseURL,
@@ -146,6 +166,12 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set the client context in the server before handling the message
+	ctx := s.server.WithContext(r.Context(), NotificationContext{
+		ClientID:  sessionID,
+		SessionID: sessionID,
+	})
+
 	sessionI, ok := s.sessions.Load(sessionID)
 	if !ok {
 		s.writeJSONRPCError(w, nil, mcp.INVALID_PARAMS, "Invalid session ID")
@@ -161,7 +187,7 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process message through MCPServer
-	response := s.server.HandleMessage(r.Context(), rawMessage)
+	response := s.server.HandleMessage(ctx, rawMessage)
 
 	// Only send response if there is one (not for notifications)
 	if response != nil {

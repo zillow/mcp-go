@@ -26,33 +26,96 @@ type resourceTemplateEntry struct {
 type ServerOption func(*MCPServer)
 
 // ResourceHandlerFunc is a function that returns resource contents.
-type ResourceHandlerFunc func(request mcp.ReadResourceRequest) ([]interface{}, error)
+type ResourceHandlerFunc func(ctx context.Context, request mcp.ReadResourceRequest) ([]interface{}, error)
 
 // ResourceTemplateHandlerFunc is a function that returns a resource template.
-type ResourceTemplateHandlerFunc func(request mcp.ReadResourceRequest) ([]interface{}, error)
+type ResourceTemplateHandlerFunc func(ctx context.Context, request mcp.ReadResourceRequest) ([]interface{}, error)
 
 // PromptHandlerFunc handles prompt requests with given arguments.
-type PromptHandlerFunc func(arguments map[string]string) (*mcp.GetPromptResult, error)
+type PromptHandlerFunc func(ctx context.Context, arguments map[string]string) (*mcp.GetPromptResult, error)
 
 // ToolHandlerFunc handles tool calls with given arguments.
-type ToolHandlerFunc func(arguments map[string]interface{}) (*mcp.CallToolResult, error)
+type ToolHandlerFunc func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error)
+
+// NotificationContext provides client identification for notifications
+type NotificationContext struct {
+	ClientID  string
+	SessionID string
+}
+
+// ServerNotification combines the notification with client context
+type ServerNotification struct {
+	Context      NotificationContext
+	Notification mcp.JSONRPCNotification
+}
 
 // NotificationHandlerFunc handles incoming notifications.
-type NotificationHandlerFunc func(notification mcp.JSONRPCNotification)
+type NotificationHandlerFunc func(ctx context.Context, notification mcp.JSONRPCNotification)
 
 // MCPServer implements a Model Control Protocol server that can handle various types of requests
 // including resources, prompts, and tools.
 type MCPServer struct {
-	name              string
-	version           string
-	resources         map[string]resourceEntry
-	resourceTemplates map[string]resourceTemplateEntry
-	prompts           map[string]mcp.Prompt
-	promptHandlers    map[string]PromptHandlerFunc
-	tools             map[string]mcp.Tool
-	toolHandlers      map[string]ToolHandlerFunc
+	name                 string
+	version              string
+	resources            map[string]resourceEntry
+	resourceTemplates    map[string]resourceTemplateEntry
+	prompts              map[string]mcp.Prompt
+	promptHandlers       map[string]PromptHandlerFunc
+	tools               map[string]mcp.Tool
+	toolHandlers        map[string]ToolHandlerFunc
 	notificationHandlers map[string]NotificationHandlerFunc
-	capabilities      serverCapabilities
+	capabilities        serverCapabilities
+	notifications       chan ServerNotification
+	currentClient       NotificationContext
+}
+
+// serverKey is the context key for storing the server instance
+type serverKey struct{}
+
+// ServerFromContext retrieves the MCPServer instance from a context
+func ServerFromContext(ctx context.Context) *MCPServer {
+	if srv, ok := ctx.Value(serverKey{}).(*MCPServer); ok {
+		return srv
+	}
+	return nil
+}
+
+// WithContext sets the current client context and returns the provided context
+func (s *MCPServer) WithContext(ctx context.Context, notifCtx NotificationContext) context.Context {
+	s.currentClient = notifCtx
+	return ctx
+}
+
+// SendNotificationToClient sends a notification to the current client
+func (s *MCPServer) SendNotificationToClient(method string, params interface{}) error {
+	if s.notifications == nil {
+		return fmt.Errorf("notification channel not initialized")
+	}
+
+	notification := mcp.JSONRPCNotification{
+		JSONRPC: mcp.JSONRPC_VERSION,
+		Notification: mcp.Notification{
+			Method: method,
+		},
+	}
+	
+	if params != nil {
+		var notificationParams struct {
+			Meta map[string]interface{} `json:"_meta,omitempty"`
+		}
+		notificationParams.Meta = map[string]interface{}{"params": params}
+		notification.Notification.Params = notificationParams
+	}
+
+	select {
+	case s.notifications <- ServerNotification{
+		Context:      s.currentClient,
+		Notification: notification,
+	}:
+		return nil
+	default:
+		return fmt.Errorf("notification channel full or blocked")
+	}
 }
 
 // serverCapabilities defines the supported features of the MCP server
@@ -114,6 +177,7 @@ func NewMCPServer(
 		name:              name,
 		version:           version,
 		notificationHandlers: make(map[string]NotificationHandlerFunc),
+		notifications:     make(chan ServerNotification, 100),
 	}
 
 	for _, opt := range opts {
@@ -128,6 +192,9 @@ func (s *MCPServer) HandleMessage(
 	ctx context.Context,
 	message json.RawMessage,
 ) mcp.JSONRPCMessage {
+	// Add server to context
+	ctx = context.WithValue(ctx, serverKey{}, s)
+
 	var baseMessage struct {
 		JSONRPC string      `json:"jsonrpc"`
 		Method  string      `json:"method"`
@@ -160,7 +227,7 @@ func (s *MCPServer) HandleMessage(
 				"Failed to parse notification",
 			)
 		}
-		s.handleNotification(notification)
+		s.handleNotification(ctx, notification)
 		return nil // Return nil for notifications
 	}
 
@@ -174,7 +241,7 @@ func (s *MCPServer) HandleMessage(
 				"Invalid initialize request",
 			)
 		}
-		return s.handleInitialize(baseMessage.ID, request)
+		return s.handleInitialize(ctx, baseMessage.ID, request)
 	case "ping":
 		var request mcp.PingRequest
 		if err := json.Unmarshal(message, &request); err != nil {
@@ -184,7 +251,7 @@ func (s *MCPServer) HandleMessage(
 				"Invalid ping request",
 			)
 		}
-		return s.handlePing(baseMessage.ID, request)
+		return s.handlePing(ctx, baseMessage.ID, request)
 	case "resources/list":
 		if s.capabilities.resources == nil {
 			return createErrorResponse(
@@ -201,7 +268,7 @@ func (s *MCPServer) HandleMessage(
 				"Invalid list resources request",
 			)
 		}
-		return s.handleListResources(baseMessage.ID, request)
+		return s.handleListResources(ctx, baseMessage.ID, request)
 	case "resources/templates/list":
 		if s.capabilities.resources == nil {
 			return createErrorResponse(
@@ -218,7 +285,7 @@ func (s *MCPServer) HandleMessage(
 				"Invalid list resource templates request",
 			)
 		}
-		return s.handleListResourceTemplates(baseMessage.ID, request)
+		return s.handleListResourceTemplates(ctx, baseMessage.ID, request)
 	case "resources/read":
 		if s.capabilities.resources == nil {
 			return createErrorResponse(
@@ -235,7 +302,7 @@ func (s *MCPServer) HandleMessage(
 				"Invalid read resource request",
 			)
 		}
-		return s.handleReadResource(baseMessage.ID, request)
+		return s.handleReadResource(ctx, baseMessage.ID, request)
 	case "prompts/list":
 		if s.capabilities.prompts == nil {
 			return createErrorResponse(
@@ -252,7 +319,7 @@ func (s *MCPServer) HandleMessage(
 				"Invalid list prompts request",
 			)
 		}
-		return s.handleListPrompts(baseMessage.ID, request)
+		return s.handleListPrompts(ctx, baseMessage.ID, request)
 	case "prompts/get":
 		if s.capabilities.prompts == nil {
 			return createErrorResponse(
@@ -269,7 +336,7 @@ func (s *MCPServer) HandleMessage(
 				"Invalid get prompt request",
 			)
 		}
-		return s.handleGetPrompt(baseMessage.ID, request)
+		return s.handleGetPrompt(ctx, baseMessage.ID, request)
 	case "tools/list":
 		if len(s.tools) == 0 {
 			return createErrorResponse(
@@ -286,7 +353,7 @@ func (s *MCPServer) HandleMessage(
 				"Invalid list tools request",
 			)
 		}
-		return s.handleListTools(baseMessage.ID, request)
+		return s.handleListTools(ctx, baseMessage.ID, request)
 	case "tools/call":
 		if len(s.tools) == 0 {
 			return createErrorResponse(
@@ -303,7 +370,7 @@ func (s *MCPServer) HandleMessage(
 				"Invalid call tool request",
 			)
 		}
-		return s.handleToolCall(baseMessage.ID, request)
+		return s.handleToolCall(ctx, baseMessage.ID, request)
 	default:
 		return createErrorResponse(
 			baseMessage.ID,
@@ -362,6 +429,7 @@ func (s *MCPServer) AddNotificationHandler(method string, handler NotificationHa
 }
 
 func (s *MCPServer) handleInitialize(
+	ctx context.Context,
 	id interface{},
 	request mcp.InitializeRequest,
 ) mcp.JSONRPCMessage {
@@ -411,6 +479,7 @@ func (s *MCPServer) handleInitialize(
 }
 
 func (s *MCPServer) handlePing(
+	ctx context.Context,
 	id interface{},
 	request mcp.PingRequest,
 ) mcp.JSONRPCMessage {
@@ -418,6 +487,7 @@ func (s *MCPServer) handlePing(
 }
 
 func (s *MCPServer) handleListResources(
+	ctx context.Context,
 	id interface{},
 	request mcp.ListResourcesRequest,
 ) mcp.JSONRPCMessage {
@@ -436,6 +506,7 @@ func (s *MCPServer) handleListResources(
 }
 
 func (s *MCPServer) handleListResourceTemplates(
+	ctx context.Context,
 	id interface{},
 	request mcp.ListResourceTemplatesRequest,
 ) mcp.JSONRPCMessage {
@@ -454,12 +525,13 @@ func (s *MCPServer) handleListResourceTemplates(
 }
 
 func (s *MCPServer) handleReadResource(
+	ctx context.Context,
 	id interface{},
 	request mcp.ReadResourceRequest,
 ) mcp.JSONRPCMessage {
 	// First try direct resource handlers
 	if entry, ok := s.resources[request.Params.URI]; ok {
-		contents, err := entry.handler(request)
+		contents, err := entry.handler(ctx, request)
 		if err != nil {
 			return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 		}
@@ -469,7 +541,7 @@ func (s *MCPServer) handleReadResource(
 	// If no direct handler found, try matching against templates
 	for uriTemplate, entry := range s.resourceTemplates {
 		if matchesTemplate(request.Params.URI, uriTemplate) {
-			contents, err := entry.handler(request)
+			contents, err := entry.handler(ctx, request)
 			if err != nil {
 				return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 			}
@@ -505,6 +577,7 @@ func matchesTemplate(uri string, template string) bool {
 }
 
 func (s *MCPServer) handleListPrompts(
+	ctx context.Context,
 	id interface{},
 	request mcp.ListPromptsRequest,
 ) mcp.JSONRPCMessage {
@@ -523,6 +596,7 @@ func (s *MCPServer) handleListPrompts(
 }
 
 func (s *MCPServer) handleGetPrompt(
+	ctx context.Context,
 	id interface{},
 	request mcp.GetPromptRequest,
 ) mcp.JSONRPCMessage {
@@ -535,7 +609,7 @@ func (s *MCPServer) handleGetPrompt(
 		)
 	}
 
-	result, err := handler(request.Params.Arguments)
+	result, err := handler(ctx, request.Params.Arguments)
 	if err != nil {
 		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 	}
@@ -544,6 +618,7 @@ func (s *MCPServer) handleGetPrompt(
 }
 
 func (s *MCPServer) handleListTools(
+	ctx context.Context,
 	id interface{},
 	request mcp.ListToolsRequest,
 ) mcp.JSONRPCMessage {
@@ -562,6 +637,7 @@ func (s *MCPServer) handleListTools(
 }
 
 func (s *MCPServer) handleToolCall(
+	ctx context.Context,
 	id interface{},
 	request mcp.CallToolRequest,
 ) mcp.JSONRPCMessage {
@@ -574,7 +650,7 @@ func (s *MCPServer) handleToolCall(
 		)
 	}
 
-	result, err := handler(request.Params.Arguments)
+	result, err := handler(ctx, request.Params.Arguments)
 	if err != nil {
 		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 	}
@@ -582,9 +658,9 @@ func (s *MCPServer) handleToolCall(
 	return createResponse(id, result)
 }
 
-func (s *MCPServer) handleNotification(notification mcp.JSONRPCNotification) mcp.JSONRPCMessage {
+func (s *MCPServer) handleNotification(ctx context.Context, notification mcp.JSONRPCNotification) mcp.JSONRPCMessage {
 	if handler, ok := s.notificationHandlers[notification.Method]; ok {
-		handler(notification)
+		handler(ctx, notification)
 	}
 	return nil
 }
