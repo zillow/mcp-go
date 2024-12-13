@@ -97,7 +97,7 @@ func (s *StdioServer) processMessage(ctx context.Context, line string, writer io
 	// Handle the message using the wrapped server
 	response := s.server.HandleMessage(ctx, rawMessage)
 
-	// Send the response if there is one (notifications don't have responses)
+	// Only write response if there is one (not for notifications)
 	if response != nil {
 		if err := s.writeResponse(response, writer); err != nil {
 			return fmt.Errorf("failed to write response: %w", err)

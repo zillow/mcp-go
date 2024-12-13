@@ -127,7 +127,7 @@ func NewMCPServer() *MCPServer {
 		mcp.WithDescription("Returns the MCP_TINY_IMAGE"),
 	), s.handleGetTinyImageTool)
 
-	s.server.AddNotificationHandler(s.handleNotification)
+	s.server.AddNotificationHandler("notification", s.handleNotification)
 
 	go s.runUpdateInterval()
 

@@ -163,7 +163,7 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	// Process message through MCPServer
 	response := s.server.HandleMessage(r.Context(), rawMessage)
 
-	// Send response via SSE if there is one
+	// Only send response if there is one (not for notifications)
 	if response != nil {
 		eventData, _ := json.Marshal(response)
 		fmt.Fprintf(session.writer, "event: message\ndata: %s\n\n", eventData)
@@ -173,6 +173,9 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(response)
+	} else {
+		// For notifications, just send 202 Accepted with no body
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
 

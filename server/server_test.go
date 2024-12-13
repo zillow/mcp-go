@@ -294,7 +294,7 @@ func TestMCPServer_HandleNotifications(t *testing.T) {
 	server := createTestServer()
 	notificationReceived := false
 
-	server.AddNotificationHandler(func(notification mcp.JSONRPCNotification) {
+	server.AddNotificationHandler("notifications/initialized", func(notification mcp.JSONRPCNotification) {
 		notificationReceived = true
 	})
 

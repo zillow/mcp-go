@@ -51,7 +51,7 @@ type MCPServer struct {
 	promptHandlers    map[string]PromptHandlerFunc
 	tools             map[string]mcp.Tool
 	toolHandlers      map[string]ToolHandlerFunc
-	notifications     []NotificationHandlerFunc
+	notificationHandlers map[string]NotificationHandlerFunc
 	capabilities      serverCapabilities
 }
 
@@ -113,6 +113,7 @@ func NewMCPServer(
 		toolHandlers:      make(map[string]ToolHandlerFunc),
 		name:              name,
 		version:           version,
+		notificationHandlers: make(map[string]NotificationHandlerFunc),
 	}
 
 	for _, opt := range opts {
@@ -159,7 +160,8 @@ func (s *MCPServer) HandleMessage(
 				"Failed to parse notification",
 			)
 		}
-		return s.handleNotification(notification)
+		s.handleNotification(notification)
+		return nil // Return nil for notifications
 	}
 
 	switch baseMessage.Method {
@@ -355,10 +357,8 @@ func (s *MCPServer) AddTool(tool mcp.Tool, handler ToolHandlerFunc) {
 }
 
 // AddNotificationHandler registers a new handler for incoming notifications
-func (s *MCPServer) AddNotificationHandler(
-	handler NotificationHandlerFunc,
-) {
-	s.notifications = append(s.notifications, handler)
+func (s *MCPServer) AddNotificationHandler(method string, handler NotificationHandlerFunc) {
+	s.notificationHandlers[method] = handler
 }
 
 func (s *MCPServer) handleInitialize(
@@ -582,10 +582,8 @@ func (s *MCPServer) handleToolCall(
 	return createResponse(id, result)
 }
 
-func (s *MCPServer) handleNotification(
-	notification mcp.JSONRPCNotification,
-) mcp.JSONRPCMessage {
-	for _, handler := range s.notifications {
+func (s *MCPServer) handleNotification(notification mcp.JSONRPCNotification) mcp.JSONRPCMessage {
+	if handler, ok := s.notificationHandlers[notification.Method]; ok {
 		handler(notification)
 	}
 	return nil
