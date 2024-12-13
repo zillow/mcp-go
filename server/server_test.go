@@ -39,9 +39,13 @@ func TestMCPServer_Capabilities(t *testing.T) {
 				)
 				assert.Equal(t, "test-server", initResult.ServerInfo.Name)
 				assert.Equal(t, "1.0.0", initResult.ServerInfo.Version)
-				assert.Nil(t, initResult.Capabilities.Resources)
-				assert.Nil(t, initResult.Capabilities.Prompts)
-				assert.Nil(t, initResult.Capabilities.Tools)
+				assert.NotNil(t, initResult.Capabilities.Resources)
+				assert.False(t, initResult.Capabilities.Resources.Subscribe)
+				assert.True(t, initResult.Capabilities.Resources.ListChanged)
+				assert.NotNil(t, initResult.Capabilities.Prompts)
+				assert.True(t, initResult.Capabilities.Prompts.ListChanged)
+				assert.NotNil(t, initResult.Capabilities.Tools)
+				assert.True(t, initResult.Capabilities.Tools.ListChanged)
 				assert.Nil(t, initResult.Capabilities.Logging)
 			},
 		},
@@ -53,60 +57,6 @@ func TestMCPServer_Capabilities(t *testing.T) {
 				WithLogging(),
 			},
 			validate: func(t *testing.T, response mcp.JSONRPCMessage) {
-				server := NewMCPServer("test-server", "1.0.0",
-					WithResourceCapabilities(true, true),
-					WithPromptCapabilities(true),
-					WithLogging(),
-				)
-
-				// Add a test tool to enable tool capabilities
-				server.AddTool(mcp.Tool{
-					Name:        "test-tool",
-					Description: "Test tool",
-					InputSchema: mcp.ToolInputSchema{
-						Type:       "object",
-						Properties: map[string]interface{}{},
-					},
-				}, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-					return &mcp.CallToolResult{}, nil
-				})
-
-				// Create and handle the initialize message
-				server = NewMCPServer(
-					"test-server",
-					"1.0.0",
-					WithResourceCapabilities(true, true),
-					WithPromptCapabilities(true),
-					WithLogging(),
-				)
-
-				// Add a test tool to enable tool capabilities
-				server.AddTool(mcp.Tool{
-					Name:        "test-tool",
-					Description: "Test tool",
-					InputSchema: mcp.ToolInputSchema{
-						Type:       "object",
-						Properties: map[string]interface{}{},
-					},
-				}, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-					return &mcp.CallToolResult{}, nil
-				})
-
-				// Create and handle the initialize message
-				message := mcp.JSONRPCRequest{
-					JSONRPC: "2.0",
-					ID:      1,
-					Request: mcp.Request{
-						Method: "initialize",
-					},
-				}
-				messageBytes, err := json.Marshal(message)
-				assert.NoError(t, err)
-
-				response = server.HandleMessage(
-					context.Background(),
-					messageBytes,
-				)
 				resp, ok := response.(mcp.JSONRPCResponse)
 				assert.True(t, ok)
 
@@ -122,23 +72,15 @@ func TestMCPServer_Capabilities(t *testing.T) {
 				assert.Equal(t, "1.0.0", initResult.ServerInfo.Version)
 
 				assert.NotNil(t, initResult.Capabilities.Resources)
-				if initResult.Capabilities.Resources != nil {
-					assert.True(t, initResult.Capabilities.Resources.Subscribe)
-					assert.True(
-						t,
-						initResult.Capabilities.Resources.ListChanged,
-					)
-				}
+				// Resources capabilities are now always false for subscribe and true for listChanged
+				assert.False(t, initResult.Capabilities.Resources.Subscribe)
+				assert.True(t, initResult.Capabilities.Resources.ListChanged)
 
 				assert.NotNil(t, initResult.Capabilities.Prompts)
-				if initResult.Capabilities.Prompts != nil {
-					assert.True(t, initResult.Capabilities.Prompts.ListChanged)
-				}
+				assert.True(t, initResult.Capabilities.Prompts.ListChanged)
 
 				assert.NotNil(t, initResult.Capabilities.Tools)
-				if initResult.Capabilities.Tools != nil {
-					assert.True(t, initResult.Capabilities.Tools.ListChanged)
-				}
+				assert.True(t, initResult.Capabilities.Tools.ListChanged)
 
 				assert.NotNil(t, initResult.Capabilities.Logging)
 			},

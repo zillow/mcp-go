@@ -67,6 +67,7 @@ type MCPServer struct {
 	capabilities         serverCapabilities
 	notifications        chan ServerNotification
 	currentClient        NotificationContext
+	initialized          bool
 }
 
 // serverKey is the context key for storing the server instance
@@ -422,6 +423,13 @@ func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler PromptHandlerFunc) {
 func (s *MCPServer) AddTool(tool mcp.Tool, handler ToolHandlerFunc) {
 	s.tools[tool.Name] = tool
 	s.toolHandlers[tool.Name] = handler
+
+	// Send notification if server is already initialized
+	if s.initialized {
+		if err := s.SendNotificationToClient("notifications/tools/list_changed", nil); err != nil {
+			// We can't return the error, but in a future version we could log it
+		}
+	}
 }
 
 // AddNotificationHandler registers a new handler for incoming notifications
@@ -439,31 +447,24 @@ func (s *MCPServer) handleInitialize(
 ) mcp.JSONRPCMessage {
 	capabilities := mcp.ServerCapabilities{}
 
-	if s.capabilities.resources != nil {
-		capabilities.Resources = &struct {
-			Subscribe   bool `json:"subscribe,omitempty"`
-			ListChanged bool `json:"listChanged,omitempty"`
-		}{
-			Subscribe:   s.capabilities.resources.subscribe,
-			ListChanged: s.capabilities.resources.listChanged,
-		}
+	capabilities.Resources = &struct {
+		Subscribe   bool `json:"subscribe,omitempty"`
+		ListChanged bool `json:"listChanged,omitempty"`
+	}{
+		Subscribe:   false,
+		ListChanged: true,
 	}
 
-	if s.capabilities.prompts != nil {
-		capabilities.Prompts = &struct {
-			ListChanged bool `json:"listChanged,omitempty"`
-		}{
-			ListChanged: s.capabilities.prompts.listChanged,
-		}
+	capabilities.Prompts = &struct {
+		ListChanged bool `json:"listChanged,omitempty"`
+	}{
+		ListChanged: true,
 	}
 
-	// Only include Tools capability if there are registered tools
-	if len(s.tools) > 0 {
-		capabilities.Tools = &struct {
-			ListChanged bool `json:"listChanged,omitempty"`
-		}{
-			ListChanged: true, // Always true when tools are present
-		}
+	capabilities.Tools = &struct {
+		ListChanged bool `json:"listChanged,omitempty"`
+	}{
+		ListChanged: true,
 	}
 
 	if s.capabilities.logging {
@@ -479,6 +480,7 @@ func (s *MCPServer) handleInitialize(
 		Capabilities: capabilities,
 	}
 
+	s.initialized = true
 	return createResponse(id, result)
 }
 
