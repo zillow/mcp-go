@@ -216,7 +216,7 @@ func (s *MCPServer) handleResourceTemplate(
 
 func (s *MCPServer) handleSimplePrompt(
 	ctx context.Context,
-	arguments map[string]string,
+	request mcp.GetPromptRequest,
 ) (*mcp.GetPromptResult, error) {
 	return &mcp.GetPromptResult{
 		Description: "A simple prompt without arguments",
@@ -234,8 +234,9 @@ func (s *MCPServer) handleSimplePrompt(
 
 func (s *MCPServer) handleComplexPrompt(
 	ctx context.Context,
-	arguments map[string]string,
+	request mcp.GetPromptRequest,
 ) (*mcp.GetPromptResult, error) {
+	arguments := request.Params.Arguments
 	return &mcp.GetPromptResult{
 		Description: "A complex prompt with arguments",
 		Messages: []mcp.PromptMessage{
@@ -271,8 +272,9 @@ func (s *MCPServer) handleComplexPrompt(
 
 func (s *MCPServer) handleEchoTool(
 	ctx context.Context,
-	arguments map[string]interface{},
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+	arguments := request.Params.Arguments
 	message, ok := arguments["message"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid message argument")
@@ -289,8 +291,9 @@ func (s *MCPServer) handleEchoTool(
 
 func (s *MCPServer) handleAddTool(
 	ctx context.Context,
-	arguments map[string]interface{},
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+	arguments := request.Params.Arguments
 	a, ok1 := arguments["a"].(float64)
 	b, ok2 := arguments["b"].(float64)
 	if !ok1 || !ok2 {
@@ -309,7 +312,7 @@ func (s *MCPServer) handleAddTool(
 
 func (s *MCPServer) handleSendNotification(
 	ctx context.Context,
-	arguments map[string]interface{},
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 
 	server := server.ServerFromContext(ctx)
@@ -346,8 +349,9 @@ func (s *MCPServer) ServeStdio() error {
 
 func (s *MCPServer) handleLongRunningOperationTool(
 	ctx context.Context,
-	arguments map[string]interface{},
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+	arguments := request.Params.Arguments
 	duration, _ := arguments["duration"].(float64)
 	steps, _ := arguments["steps"].(float64)
 	stepDuration := duration / steps
@@ -414,7 +418,7 @@ func (s *MCPServer) handleLongRunningOperationTool(
 
 func (s *MCPServer) handleGetTinyImageTool(
 	ctx context.Context,
-	arguments map[string]interface{},
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return &mcp.CallToolResult{
 		Content: []interface{}{

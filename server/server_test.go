@@ -67,11 +67,11 @@ func TestMCPServer_Capabilities(t *testing.T) {
 						Type:       "object",
 						Properties: map[string]interface{}{},
 					},
-				}, func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+				}, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 					return &mcp.CallToolResult{}, nil
 				})
 
-				// Create a new server with all capabilities and a tool
+				// Create and handle the initialize message
 				server = NewMCPServer(
 					"test-server",
 					"1.0.0",
@@ -88,7 +88,7 @@ func TestMCPServer_Capabilities(t *testing.T) {
 						Type:       "object",
 						Properties: map[string]interface{}{},
 					},
-				}, func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+				}, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 					return &mcp.CallToolResult{}, nil
 				})
 
@@ -327,14 +327,14 @@ func TestMCPServer_PromptHandling(t *testing.T) {
 
 	server.AddPrompt(
 		testPrompt,
-		func(ctx context.Context, arguments map[string]string) (*mcp.GetPromptResult, error) {
+		func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 			return &mcp.GetPromptResult{
 				Messages: []mcp.PromptMessage{
 					{
 						Role: mcp.RoleAssistant,
 						Content: mcp.TextContent{
 							Type: "text",
-							Text: "Test prompt with arg1: " + arguments["arg1"],
+							Text: "Test prompt with arg1: " + request.Params.Arguments["arg1"],
 						},
 					},
 				},
@@ -489,7 +489,7 @@ func TestMCPServer_HandleUndefinedHandlers(t *testing.T) {
 			Type:       "object",
 			Properties: map[string]interface{}{},
 		},
-	}, func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	}, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return &mcp.CallToolResult{}, nil
 	})
 
@@ -646,7 +646,7 @@ func createTestServer() *MCPServer {
 			Name:        "test-tool",
 			Description: "Test tool",
 		},
-		func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+		func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{
 				Content: []interface{}{
 					mcp.TextContent{

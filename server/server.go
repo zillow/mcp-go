@@ -32,10 +32,10 @@ type ResourceHandlerFunc func(ctx context.Context, request mcp.ReadResourceReque
 type ResourceTemplateHandlerFunc func(ctx context.Context, request mcp.ReadResourceRequest) ([]interface{}, error)
 
 // PromptHandlerFunc handles prompt requests with given arguments.
-type PromptHandlerFunc func(ctx context.Context, arguments map[string]string) (*mcp.GetPromptResult, error)
+type PromptHandlerFunc func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error)
 
 // ToolHandlerFunc handles tool calls with given arguments.
-type ToolHandlerFunc func(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error)
+type ToolHandlerFunc func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
 
 // NotificationContext provides client identification for notifications
 type NotificationContext struct {
@@ -613,7 +613,7 @@ func (s *MCPServer) handleGetPrompt(
 		)
 	}
 
-	result, err := handler(ctx, request.Params.Arguments)
+	result, err := handler(ctx, request)
 	if err != nil {
 		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 	}
@@ -654,7 +654,7 @@ func (s *MCPServer) handleToolCall(
 		)
 	}
 
-	result, err := handler(ctx, request.Params.Arguments)
+	result, err := handler(ctx, request)
 	if err != nil {
 		return createErrorResponse(id, mcp.INTERNAL_ERROR, err.Error())
 	}
