@@ -311,22 +311,20 @@ func (s *MCPServer) handleSendNotification(
 	ctx context.Context,
 	arguments map[string]interface{},
 ) (*mcp.CallToolResult, error) {
-	log.Printf("Sending notification to client...")
 
 	server := server.ServerFromContext(ctx)
 
 	err := server.SendNotificationToClient(
-		"notifications/initialized",
+		"notifications/progress",
 		map[string]interface{}{
-			"message":   "This is a test notification",
-			"timestamp": time.Now().String(),
+			"progress":      10,
+			"total":         10,
+			"progressToken": 0,
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send notification: %w", err)
 	}
-
-	log.Printf("Notification sent")
 
 	return &mcp.CallToolResult{
 		Content: []interface{}{

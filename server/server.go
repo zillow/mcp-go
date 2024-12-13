@@ -61,12 +61,12 @@ type MCPServer struct {
 	resourceTemplates    map[string]resourceTemplateEntry
 	prompts              map[string]mcp.Prompt
 	promptHandlers       map[string]PromptHandlerFunc
-	tools               map[string]mcp.Tool
-	toolHandlers        map[string]ToolHandlerFunc
+	tools                map[string]mcp.Tool
+	toolHandlers         map[string]ToolHandlerFunc
 	notificationHandlers map[string]NotificationHandlerFunc
-	capabilities        serverCapabilities
-	notifications       chan ServerNotification
-	currentClient       NotificationContext
+	capabilities         serverCapabilities
+	notifications        chan ServerNotification
+	currentClient        NotificationContext
 }
 
 // serverKey is the context key for storing the server instance
@@ -81,13 +81,19 @@ func ServerFromContext(ctx context.Context) *MCPServer {
 }
 
 // WithContext sets the current client context and returns the provided context
-func (s *MCPServer) WithContext(ctx context.Context, notifCtx NotificationContext) context.Context {
+func (s *MCPServer) WithContext(
+	ctx context.Context,
+	notifCtx NotificationContext,
+) context.Context {
 	s.currentClient = notifCtx
 	return ctx
 }
 
 // SendNotificationToClient sends a notification to the current client
-func (s *MCPServer) SendNotificationToClient(method string, params interface{}) error {
+func (s *MCPServer) SendNotificationToClient(
+	method string,
+	params map[string]interface{},
+) error {
 	if s.notifications == nil {
 		return fmt.Errorf("notification channel not initialized")
 	}
@@ -96,15 +102,10 @@ func (s *MCPServer) SendNotificationToClient(method string, params interface{}) 
 		JSONRPC: mcp.JSONRPC_VERSION,
 		Notification: mcp.Notification{
 			Method: method,
+			Params: mcp.NotificationParams{
+				AdditionalFields: params,
+			},
 		},
-	}
-	
-	if params != nil {
-		var notificationParams struct {
-			Meta map[string]interface{} `json:"_meta,omitempty"`
-		}
-		notificationParams.Meta = map[string]interface{}{"params": params}
-		notification.Notification.Params = notificationParams
 	}
 
 	select {
@@ -168,16 +169,16 @@ func NewMCPServer(
 	opts ...ServerOption,
 ) *MCPServer {
 	s := &MCPServer{
-		resources:         make(map[string]resourceEntry),
-		resourceTemplates: make(map[string]resourceTemplateEntry),
-		prompts:           make(map[string]mcp.Prompt),
-		promptHandlers:    make(map[string]PromptHandlerFunc),
-		tools:             make(map[string]mcp.Tool),
-		toolHandlers:      make(map[string]ToolHandlerFunc),
-		name:              name,
-		version:           version,
+		resources:            make(map[string]resourceEntry),
+		resourceTemplates:    make(map[string]resourceTemplateEntry),
+		prompts:              make(map[string]mcp.Prompt),
+		promptHandlers:       make(map[string]PromptHandlerFunc),
+		tools:                make(map[string]mcp.Tool),
+		toolHandlers:         make(map[string]ToolHandlerFunc),
+		name:                 name,
+		version:              version,
 		notificationHandlers: make(map[string]NotificationHandlerFunc),
-		notifications:     make(chan ServerNotification, 100),
+		notifications:        make(chan ServerNotification, 100),
 	}
 
 	for _, opt := range opts {
@@ -424,7 +425,10 @@ func (s *MCPServer) AddTool(tool mcp.Tool, handler ToolHandlerFunc) {
 }
 
 // AddNotificationHandler registers a new handler for incoming notifications
-func (s *MCPServer) AddNotificationHandler(method string, handler NotificationHandlerFunc) {
+func (s *MCPServer) AddNotificationHandler(
+	method string,
+	handler NotificationHandlerFunc,
+) {
 	s.notificationHandlers[method] = handler
 }
 
@@ -658,7 +662,10 @@ func (s *MCPServer) handleToolCall(
 	return createResponse(id, result)
 }
 
-func (s *MCPServer) handleNotification(ctx context.Context, notification mcp.JSONRPCNotification) mcp.JSONRPCMessage {
+func (s *MCPServer) handleNotification(
+	ctx context.Context,
+	notification mcp.JSONRPCNotification,
+) mcp.JSONRPCMessage {
 	if handler, ok := s.notificationHandlers[notification.Method]; ok {
 		handler(ctx, notification)
 	}

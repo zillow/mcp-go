@@ -145,7 +145,7 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 		s.baseURL,
 		sessionID,
 	)
-	fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", messageEndpoint)
+	fmt.Fprintf(w, "event: endpoint\ndata: %s\r\n\r\n", messageEndpoint)
 	flusher.Flush()
 
 	<-r.Context().Done()

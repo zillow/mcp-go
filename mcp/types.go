@@ -2,6 +2,8 @@
 // MCP is a protocol for communication between LLM-powered applications and their supporting services.
 package mcp
 
+import "encoding/json"
+
 /* JSON-RPC types */
 
 // JSONRPCMessage represents either a JSONRPCRequest, JSONRPCNotification, JSONRPCResponse, or JSONRPCError
@@ -34,13 +36,73 @@ type Request struct {
 	} `json:"params,omitempty"`
 }
 
+type Params map[string]interface{}
+
 type Notification struct {
-	Method string `json:"method"`
-	Params struct {
-		// This parameter name is reserved by MCP to allow clients and
-		// servers to attach additional metadata to their notifications.
-		Meta map[string]interface{} `json:"_meta,omitempty"`
-	} `json:"params,omitempty"`
+	Method string             `json:"method"`
+	Params NotificationParams `json:"params,omitempty"`
+}
+
+type NotificationParams struct {
+	// This parameter name is reserved by MCP to allow clients and
+	// servers to attach additional metadata to their notifications.
+	Meta map[string]interface{} `json:"_meta,omitempty"`
+
+	// Additional fields can be added to this map
+	AdditionalFields map[string]interface{} `json:"-"`
+}
+
+// MarshalJSON implements custom JSON marshaling
+func (p NotificationParams) MarshalJSON() ([]byte, error) {
+	// Create a map to hold all fields
+	m := make(map[string]interface{})
+
+	// Add Meta if it exists
+	if p.Meta != nil {
+		m["_meta"] = p.Meta
+	}
+
+	// Add all additional fields
+	for k, v := range p.AdditionalFields {
+		// Ensure we don't override the _meta field
+		if k != "_meta" {
+			m[k] = v
+		}
+	}
+
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling
+func (p *NotificationParams) UnmarshalJSON(data []byte) error {
+	// Create a map to hold all fields
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+
+	// Initialize maps if they're nil
+	if p.Meta == nil {
+		p.Meta = make(map[string]interface{})
+	}
+	if p.AdditionalFields == nil {
+		p.AdditionalFields = make(map[string]interface{})
+	}
+
+	// Process all fields
+	for k, v := range m {
+		if k == "_meta" {
+			// Handle Meta field
+			if meta, ok := v.(map[string]interface{}); ok {
+				p.Meta = meta
+			}
+		} else {
+			// Handle additional fields
+			p.AdditionalFields[k] = v
+		}
+	}
+
+	return nil
 }
 
 type Result struct {

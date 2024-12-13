@@ -28,7 +28,7 @@ func NewStdioServer(server *MCPServer) *StdioServer {
 	return &StdioServer{
 		server: server,
 		errLogger: log.New(
-			io.Discard,
+			os.Stderr,
 			"",
 			log.LstdFlags,
 		), // Default to discarding logs
@@ -64,17 +64,11 @@ func (s *StdioServer) Listen(
 			case serverNotification := <-s.server.notifications:
 				// Only handle notifications for stdio client
 				if serverNotification.Context.ClientID == "stdio" {
-					notificationBytes, err := json.Marshal(
+					err := s.writeResponse(
 						serverNotification.Notification,
+						stdout,
 					)
 					if err != nil {
-						s.errLogger.Printf(
-							"Error marshaling notification: %v",
-							err,
-						)
-						continue
-					}
-					if _, err := fmt.Fprintf(stdout, "%s\n", notificationBytes); err != nil {
 						s.errLogger.Printf(
 							"Error writing notification: %v",
 							err,
