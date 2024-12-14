@@ -26,11 +26,11 @@ func TestSSEMCPClient(t *testing.T) {
 			Type:       "object",
 			Properties: map[string]interface{}{},
 		},
-	}, func(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	}, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return &mcp.CallToolResult{}, nil
 	})
 
-	// Create test server
+	// Initialize
 	testServer := server.NewTestServer(mcpServer)
 	defer testServer.Close()
 

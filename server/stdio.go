@@ -26,8 +26,12 @@ type StdioServer struct {
 // It initializes the server with a default error logger that discards all output.
 func NewStdioServer(server *MCPServer) *StdioServer {
 	return &StdioServer{
-		server:    server,
-		errLogger: log.New(io.Discard, "", log.LstdFlags), // Default to discarding logs
+		server: server,
+		errLogger: log.New(
+			os.Stderr,
+			"",
+			log.LstdFlags,
+		), // Default to discarding logs
 	}
 }
 
@@ -40,8 +44,42 @@ func (s *StdioServer) SetErrorLogger(logger *log.Logger) {
 // Listen starts listening for JSON-RPC messages on the provided input and writes responses to the provided output.
 // It runs until the context is cancelled or an error occurs.
 // Returns an error if there are issues with reading input or writing output.
-func (s *StdioServer) Listen(ctx context.Context, stdin io.Reader, stdout io.Writer) error {
+func (s *StdioServer) Listen(
+	ctx context.Context,
+	stdin io.Reader,
+	stdout io.Writer,
+) error {
+	// Set a static client context since stdio only has one client
+	ctx = s.server.WithContext(ctx, NotificationContext{
+		ClientID:  "stdio",
+		SessionID: "stdio",
+	})
+
 	reader := bufio.NewReader(stdin)
+
+	// Start notification handler
+	go func() {
+		for {
+			select {
+			case serverNotification := <-s.server.notifications:
+				// Only handle notifications for stdio client
+				if serverNotification.Context.ClientID == "stdio" {
+					err := s.writeResponse(
+						serverNotification.Notification,
+						stdout,
+					)
+					if err != nil {
+						s.errLogger.Printf(
+							"Error writing notification: %v",
+							err,
+						)
+					}
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	for {
 		select {
@@ -86,7 +124,11 @@ func (s *StdioServer) Listen(ctx context.Context, stdin io.Reader, stdout io.Wri
 // processMessage handles a single JSON-RPC message and writes the response.
 // It parses the message, processes it through the wrapped MCPServer, and writes any response.
 // Returns an error if there are issues with message processing or response writing.
-func (s *StdioServer) processMessage(ctx context.Context, line string, writer io.Writer) error {
+func (s *StdioServer) processMessage(
+	ctx context.Context,
+	line string,
+	writer io.Writer,
+) error {
 	// Parse the message as raw JSON
 	var rawMessage json.RawMessage
 	if err := json.Unmarshal([]byte(line), &rawMessage); err != nil {
@@ -97,7 +139,7 @@ func (s *StdioServer) processMessage(ctx context.Context, line string, writer io
 	// Handle the message using the wrapped server
 	response := s.server.HandleMessage(ctx, rawMessage)
 
-	// Send the response if there is one (notifications don't have responses)
+	// Only write response if there is one (not for notifications)
 	if response != nil {
 		if err := s.writeResponse(response, writer); err != nil {
 			return fmt.Errorf("failed to write response: %w", err)
@@ -109,7 +151,10 @@ func (s *StdioServer) processMessage(ctx context.Context, line string, writer io
 
 // writeResponse marshals and writes a JSON-RPC response message followed by a newline.
 // Returns an error if marshaling or writing fails.
-func (s *StdioServer) writeResponse(response mcp.JSONRPCMessage, writer io.Writer) error {
+func (s *StdioServer) writeResponse(
+	response mcp.JSONRPCMessage,
+	writer io.Writer,
+) error {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		return err

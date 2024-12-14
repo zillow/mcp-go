@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"flag"
 	"fmt"
 	"log"
 	"time"
@@ -79,6 +81,12 @@ func NewMCPServer() *MCPServer {
 			mcp.Required(),
 		),
 	), s.handleEchoTool)
+
+	s.server.AddTool(
+		mcp.NewTool("notify"),
+		s.handleSendNotification,
+	)
+
 	s.server.AddTool(mcp.NewTool(string(ADD),
 		mcp.WithDescription("Adds two numbers"),
 		mcp.WithNumber("a",
@@ -127,7 +135,7 @@ func NewMCPServer() *MCPServer {
 		mcp.WithDescription("Returns the MCP_TINY_IMAGE"),
 	), s.handleGetTinyImageTool)
 
-	s.server.AddNotificationHandler(s.handleNotification)
+	s.server.AddNotificationHandler("notification", s.handleNotification)
 
 	go s.runUpdateInterval()
 
@@ -177,6 +185,7 @@ func (s *MCPServer) runUpdateInterval() {
 }
 
 func (s *MCPServer) handleReadResource(
+	ctx context.Context,
 	request mcp.ReadResourceRequest,
 ) ([]interface{}, error) {
 	return []interface{}{
@@ -191,6 +200,7 @@ func (s *MCPServer) handleReadResource(
 }
 
 func (s *MCPServer) handleResourceTemplate(
+	ctx context.Context,
 	request mcp.ReadResourceRequest,
 ) ([]interface{}, error) {
 	return []interface{}{
@@ -205,7 +215,8 @@ func (s *MCPServer) handleResourceTemplate(
 }
 
 func (s *MCPServer) handleSimplePrompt(
-	arguments map[string]string,
+	ctx context.Context,
+	request mcp.GetPromptRequest,
 ) (*mcp.GetPromptResult, error) {
 	return &mcp.GetPromptResult{
 		Description: "A simple prompt without arguments",
@@ -222,8 +233,10 @@ func (s *MCPServer) handleSimplePrompt(
 }
 
 func (s *MCPServer) handleComplexPrompt(
-	arguments map[string]string,
+	ctx context.Context,
+	request mcp.GetPromptRequest,
 ) (*mcp.GetPromptResult, error) {
+	arguments := request.Params.Arguments
 	return &mcp.GetPromptResult{
 		Description: "A complex prompt with arguments",
 		Messages: []mcp.PromptMessage{
@@ -258,8 +271,10 @@ func (s *MCPServer) handleComplexPrompt(
 }
 
 func (s *MCPServer) handleEchoTool(
-	arguments map[string]interface{},
+	ctx context.Context,
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+	arguments := request.Params.Arguments
 	message, ok := arguments["message"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid message argument")
@@ -275,8 +290,10 @@ func (s *MCPServer) handleEchoTool(
 }
 
 func (s *MCPServer) handleAddTool(
-	arguments map[string]interface{},
+	ctx context.Context,
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+	arguments := request.Params.Arguments
 	a, ok1 := arguments["a"].(float64)
 	b, ok2 := arguments["b"].(float64)
 	if !ok1 || !ok2 {
@@ -293,35 +310,65 @@ func (s *MCPServer) handleAddTool(
 	}, nil
 }
 
-func (s *MCPServer) handleLongRunningOperationTool(
-	arguments map[string]interface{},
+func (s *MCPServer) handleSendNotification(
+	ctx context.Context,
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+
+	server := server.ServerFromContext(ctx)
+
+	err := server.SendNotificationToClient(
+		"notifications/progress",
+		map[string]interface{}{
+			"progress":      10,
+			"total":         10,
+			"progressToken": 0,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send notification: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []interface{}{
+			mcp.TextContent{
+				Type: "text",
+				Text: "notification sent successfully",
+			},
+		},
+	}, nil
+}
+
+func (s *MCPServer) ServeSSE(addr string) *server.SSEServer {
+	return server.NewSSEServer(s.server, fmt.Sprintf("http://%s", addr))
+}
+
+func (s *MCPServer) ServeStdio() error {
+	return server.ServeStdio(s.server)
+}
+
+func (s *MCPServer) handleLongRunningOperationTool(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	arguments := request.Params.Arguments
+	progressToken := request.Params.Meta.ProgressToken
 	duration, _ := arguments["duration"].(float64)
 	steps, _ := arguments["steps"].(float64)
 	stepDuration := duration / steps
-	progressToken, _ := arguments["_meta"].(map[string]interface{})["progressToken"].(mcp.ProgressToken)
+	server := server.ServerFromContext(ctx)
 
 	for i := 1; i < int(steps)+1; i++ {
 		time.Sleep(time.Duration(stepDuration * float64(time.Second)))
 		if progressToken != nil {
-			// 	s.server.HandleMessage(
-			// 		context.Background(),
-			// 		mcp.JSONRPCNotification{
-			// 			JSONRPC: mcp.JSONRPC_VERSION,
-			// 			Notification: mcp.Notification{
-			// 				Method: "progress",
-			// 				Params: struct {
-			// 					Meta map[string]interface{} `json:"_meta,omitempty"`
-			// 				}{
-			// 					Meta: map[string]interface{}{
-			// 						"progress":      i,
-			// 						"total":         int(steps),
-			// 						"progressToken": progressToken,
-			// 					},
-			// 				},
-			// 			},
-			// 		},
-			// 	)
+			server.SendNotificationToClient(
+				"notifications/progress",
+				map[string]interface{}{
+					"progress":      i,
+					"total":         int(steps),
+					"progressToken": progressToken,
+				},
+			)
 		}
 	}
 
@@ -361,7 +408,8 @@ func (s *MCPServer) handleLongRunningOperationTool(
 // }
 
 func (s *MCPServer) handleGetTinyImageTool(
-	arguments map[string]interface{},
+	ctx context.Context,
+	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return &mcp.CallToolResult{
 		Content: []interface{}{
@@ -382,7 +430,10 @@ func (s *MCPServer) handleGetTinyImageTool(
 	}, nil
 }
 
-func (s *MCPServer) handleNotification(notification mcp.JSONRPCNotification) {
+func (s *MCPServer) handleNotification(
+	ctx context.Context,
+	notification mcp.JSONRPCNotification,
+) {
 	log.Printf("Received notification: %s", notification.Method)
 }
 
@@ -391,9 +442,34 @@ func (s *MCPServer) Serve() error {
 }
 
 func main() {
+	var transport string
+	flag.StringVar(&transport, "t", "stdio", "Transport type (stdio or sse)")
+	flag.StringVar(
+		&transport,
+		"transport",
+		"stdio",
+		"Transport type (stdio or sse)",
+	)
+	flag.Parse()
+
 	server := NewMCPServer()
-	if err := server.Serve(); err != nil {
-		log.Fatalf("Server error: %v", err)
+
+	switch transport {
+	case "stdio":
+		if err := server.ServeStdio(); err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
+	case "sse":
+		sseServer := server.ServeSSE("localhost:8080")
+		log.Printf("SSE server listening on :8080")
+		if err := sseServer.Start(":8080"); err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
+	default:
+		log.Fatalf(
+			"Invalid transport type: %s. Must be 'stdio' or 'sse'",
+			transport,
+		)
 	}
 }
 

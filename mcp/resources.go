@@ -8,47 +8,47 @@ type ResourceOption func(*Resource)
 // The resource will be configured based on the provided options.
 // Options are applied in order, allowing for flexible resource configuration.
 func NewResource(uri string, name string, opts ...ResourceOption) Resource {
-    resource := Resource{
-        URI:  uri,
-        Name: name,
-    }
+	resource := Resource{
+		URI:  uri,
+		Name: name,
+	}
 
-    for _, opt := range opts {
-        opt(&resource)
-    }
+	for _, opt := range opts {
+		opt(&resource)
+	}
 
-    return resource
+	return resource
 }
 
 // WithResourceDescription adds a description to the Resource.
 // The description should provide a clear, human-readable explanation of what the resource represents.
 func WithResourceDescription(description string) ResourceOption {
-    return func(r *Resource) {
-        r.Description = description
-    }
+	return func(r *Resource) {
+		r.Description = description
+	}
 }
 
 // WithMIMEType sets the MIME type for the Resource.
 // This should indicate the format of the resource's contents.
 func WithMIMEType(mimeType string) ResourceOption {
-    return func(r *Resource) {
-        r.MIMEType = mimeType
-    }
+	return func(r *Resource) {
+		r.MIMEType = mimeType
+	}
 }
 
 // WithAnnotations adds annotations to the Resource.
 // Annotations can provide additional metadata about the resource's intended use.
 func WithAnnotations(audience []Role, priority float64) ResourceOption {
-    return func(r *Resource) {
-        if r.Annotations == nil {
-            r.Annotations = &struct {
-                Audience []Role   `json:"audience,omitempty"`
-                Priority float64  `json:"priority,omitempty"`
-            }{}
-        }
-        r.Annotations.Audience = audience
-        r.Annotations.Priority = priority
-    }
+	return func(r *Resource) {
+		if r.Annotations == nil {
+			r.Annotations = &struct {
+				Audience []Role  `json:"audience,omitempty"`
+				Priority float64 `json:"priority,omitempty"`
+			}{}
+		}
+		r.Annotations.Audience = audience
+		r.Annotations.Priority = priority
+	}
 }
 
 // ResourceTemplateOption is a function that configures a ResourceTemplate.
@@ -59,45 +59,45 @@ type ResourceTemplateOption func(*ResourceTemplate)
 // The template will be configured based on the provided options.
 // Options are applied in order, allowing for flexible template configuration.
 func NewResourceTemplate(uriTemplate string, name string, opts ...ResourceTemplateOption) ResourceTemplate {
-    template := ResourceTemplate{
-        URITemplate: uriTemplate,
-        Name:        name,
-    }
+	template := ResourceTemplate{
+		URITemplate: uriTemplate,
+		Name:        name,
+	}
 
-    for _, opt := range opts {
-        opt(&template)
-    }
+	for _, opt := range opts {
+		opt(&template)
+	}
 
-    return template
+	return template
 }
 
 // WithTemplateDescription adds a description to the ResourceTemplate.
 // The description should provide a clear, human-readable explanation of what resources this template represents.
 func WithTemplateDescription(description string) ResourceTemplateOption {
-    return func(t *ResourceTemplate) {
-        t.Description = description
-    }
+	return func(t *ResourceTemplate) {
+		t.Description = description
+	}
 }
 
 // WithTemplateMIMEType sets the MIME type for the ResourceTemplate.
 // This should only be set if all resources matching this template will have the same type.
 func WithTemplateMIMEType(mimeType string) ResourceTemplateOption {
-    return func(t *ResourceTemplate) {
-        t.MIMEType = mimeType
-    }
+	return func(t *ResourceTemplate) {
+		t.MIMEType = mimeType
+	}
 }
 
 // WithTemplateAnnotations adds annotations to the ResourceTemplate.
 // Annotations can provide additional metadata about the template's intended use.
 func WithTemplateAnnotations(audience []Role, priority float64) ResourceTemplateOption {
-    return func(t *ResourceTemplate) {
-        if t.Annotations == nil {
-            t.Annotations = &struct {
-                Audience []Role   `json:"audience,omitempty"`
-                Priority float64  `json:"priority,omitempty"`
-            }{}
-        }
-        t.Annotations.Audience = audience
-        t.Annotations.Priority = priority
-    }
+	return func(t *ResourceTemplate) {
+		if t.Annotations == nil {
+			t.Annotations = &struct {
+				Audience []Role  `json:"audience,omitempty"`
+				Priority float64 `json:"priority,omitempty"`
+			}{}
+		}
+		t.Annotations.Audience = audience
+		t.Annotations.Priority = priority
+	}
 }

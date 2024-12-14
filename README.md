@@ -46,8 +46,8 @@ func main() {
     }
 }
 
-func helloHandler(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-    name, ok := arguments["name"].(string)
+func helloHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+    name, ok := request.Params.Arguments["name"].(string)
     if !ok {
         return mcp.NewToolResultError("name must be a string"), nil
     }
@@ -137,10 +137,10 @@ func main() {
     )
 
     // Add the calculator handler
-    s.AddTool(calculatorTool, func(args map[string]interface{}) (*mcp.CallToolResult, error) {
-        op := args["operation"].(string)
-        x := args["x"].(float64)
-        y := args["y"].(float64)
+    s.AddTool(calculatorTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+        op := request.Params.Arguments["operation"].(string)
+        x := request.Params.Arguments["x"].(float64)
+        y := request.Params.Arguments["y"].(float64)
 
         var result float64
         switch op {
@@ -223,7 +223,7 @@ resource := mcp.NewResource(
 )
 
 // Add resource with its handler
-s.AddResource(resource, func(ctx context.Context) ([]interface{}, error) {
+s.AddResource(resource, func(ctx context.Context, request mcp.ReadResourceRequest) ([]interface{}, error) {
     content, err := os.ReadFile("README.md")
     if err != nil {
         return nil, err
@@ -254,8 +254,8 @@ template := mcp.NewResourceTemplate(
 )
 
 // Add template with its handler
-s.AddResourceTemplate(template, func(ctx context.Context, args map[string]interface{}) ([]interface{}, error) {
-    userID := args["id"].(string)
+s.AddResourceTemplate(template, func(ctx context.Context, request mcp.ReadResourceRequest) ([]interface{}, error) {
+    userID := request.Params.URI // Extract ID from the full URI
     
     profile, err := getUserProfile(userID)  // Your DB/API call here
     if err != nil {
@@ -303,10 +303,10 @@ calculatorTool := mcp.NewTool("calculate",
     ),
 )
 
-s.AddTool(calculatorTool, func(args map[string]interface{}) (*mcp.CallToolResult, error) {
-    op := args["operation"].(string)
-    x := args["x"].(float64)
-    y := args["y"].(float64)
+s.AddTool(calculatorTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+    op := request.Params.Arguments["operation"].(string)
+    x := request.Params.Arguments["x"].(float64)
+    y := request.Params.Arguments["y"].(float64)
 
     var result float64
     switch op {
@@ -346,11 +346,11 @@ httpTool := mcp.NewTool("http_request",
     ),
 )
 
-s.AddTool(httpTool, func(args map[string]interface{}) (*mcp.CallToolResult, error) {
-    method := args["method"].(string)
-    url := args["url"].(string)
+s.AddTool(httpTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+    method := request.Params.Arguments["method"].(string)
+    url := request.Params.Arguments["url"].(string)
     body := ""
-    if b, ok := args["body"].(string); ok {
+    if b, ok := request.Params.Arguments["body"].(string); ok {
         body = b
     }
 
@@ -413,8 +413,8 @@ s.AddPrompt(mcp.NewPrompt("greeting",
     mcp.WithArgument("name",
         mcp.ArgumentDescription("Name of the person to greet"),
     ),
-), func(args map[string]string) (*mcp.GetPromptResult, error) {
-    name := args["name"]
+), func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+    name := request.Params.Arguments["name"].(string)
     if name == "" {
         name = "friend"
     }
@@ -437,8 +437,8 @@ s.AddPrompt(mcp.NewPrompt("code_review",
         mcp.ArgumentDescription("Pull request number to review"),
         mcp.RequiredArgument(),
     ),
-), func(args map[string]string) (*mcp.GetPromptResult, error) {
-    prNumber := args["pr_number"]
+), func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+    prNumber := request.Params.Arguments["pr_number"].(string)
     if prNumber == "" {
         return nil, fmt.Errorf("pr_number is required")
     }
@@ -468,8 +468,8 @@ s.AddPrompt(mcp.NewPrompt("query_builder",
         mcp.ArgumentDescription("Name of the table to query"),
         mcp.RequiredArgument(),
     ),
-), func(args map[string]string) (*mcp.GetPromptResult, error) {
-    tableName := args["table"]
+), func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+    tableName := request.Params.Arguments["table"].(string)
     if tableName == "" {
         return nil, fmt.Errorf("table name is required")
     }
