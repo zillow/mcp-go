@@ -1,5 +1,78 @@
 package mcp
 
+// ListToolsRequest is sent from the client to request a list of tools the
+// server has.
+type ListToolsRequest struct {
+	PaginatedRequest
+}
+
+// ListToolsResult is the server's response to a tools/list request from the
+// client.
+type ListToolsResult struct {
+	PaginatedResult
+	Tools []Tool `json:"tools"`
+}
+
+// CallToolResult is the server's response to a tool call.
+//
+// Any errors that originate from the tool SHOULD be reported inside the result
+// object, with `isError` set to true, _not_ as an MCP protocol-level error
+// response. Otherwise, the LLM would not be able to see that an error occurred
+// and self-correct.
+//
+// However, any errors in _finding_ the tool, an error indicating that the
+// server does not support tool calls, or any other exceptional conditions,
+// should be reported as an MCP error response.
+type CallToolResult struct {
+	Result
+	Content []interface{} `json:"content"` // Can be TextContent, ImageContent, or      EmbeddedResource
+	// Whether the tool call ended in an error.
+	//
+	// If not set, this is assumed to be false (the call was successful).
+	IsError bool `json:"isError,omitempty"`
+}
+
+// CallToolRequest is used by the client to invoke a tool provided by the server.
+type CallToolRequest struct {
+	Request
+	Params struct {
+		Name      string                 `json:"name"`
+		Arguments map[string]interface{} `json:"arguments,omitempty"`
+		Meta      *struct {
+			// If specified, the caller is requesting out-of-band progress
+			// notifications for this request (as represented by
+			// notifications/progress). The value of this parameter is an
+			// opaque token that will be attached to any subsequent
+			// notifications. The receiver is not obligated to provide these
+			// notifications.
+			ProgressToken ProgressToken `json:"progressToken,omitempty"`
+		} `json:"_meta,omitempty"`
+	} `json:"params"`
+}
+
+// ToolListChangedNotification is an optional notification from the server to
+// the client, informing it that the list of tools it offers has changed. This may
+// be issued by servers without any previous subscription from the client.
+type ToolListChangedNotification struct {
+	Notification
+}
+
+// Tool represents the definition for a tool the client can call.
+type Tool struct {
+	// The name of the tool.
+	Name string `json:"name"`
+	// A human-readable description of the tool.
+	Description string `json:"description,omitempty"`
+	// A JSON Schema object defining the expected parameters for the tool.
+	InputSchema ToolInputSchema `json:"inputSchema"`
+}
+
+type ToolInputSchema struct {
+	Type       string                 `json:"type"`
+	Properties map[string]interface{} `json:"properties,omitempty"`
+	Required   []string               `json:"required,omitempty"`
+}
+
 // ToolOption is a function that configures a Tool.
 // It provides a flexible way to set various properties of a Tool using the functional options pattern.
 type ToolOption func(*Tool)

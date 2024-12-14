@@ -1,5 +1,103 @@
 package mcp
 
+/* Prompts */
+
+// ListPromptsRequest is sent from the client to request a list of prompts and
+// prompt templates the server has.
+type ListPromptsRequest struct {
+	PaginatedRequest
+}
+
+// ListPromptsResult is the server's response to a prompts/list request from
+// the client.
+type ListPromptsResult struct {
+	PaginatedResult
+	Prompts []Prompt `json:"prompts"`
+}
+
+// GetPromptRequest is used by the client to get a prompt provided by the
+// server.
+type GetPromptRequest struct {
+	Request
+	Params struct {
+		// The name of the prompt or prompt template.
+		Name string `json:"name"`
+		// Arguments to use for templating the prompt.
+		Arguments map[string]string `json:"arguments,omitempty"`
+	} `json:"params"`
+}
+
+// GetPromptResult is the server's response to a prompts/get request from the
+// client.
+type GetPromptResult struct {
+	Result
+	// An optional description for the prompt.
+	Description string          `json:"description,omitempty"`
+	Messages    []PromptMessage `json:"messages"`
+}
+
+// Prompt represents a prompt or prompt template that the server offers.
+// If Arguments is non-nil and non-empty, this indicates the prompt is a template
+// that requires argument values to be provided when calling prompts/get.
+// If Arguments is nil or empty, this is a static prompt that takes no arguments.
+type Prompt struct {
+	// The name of the prompt or prompt template.
+	Name string `json:"name"`
+	// An optional description of what this prompt provides
+	Description string `json:"description,omitempty"`
+	// A list of arguments to use for templating the prompt.
+	// The presence of arguments indicates this is a template prompt.
+	Arguments []PromptArgument `json:"arguments,omitempty"`
+}
+
+// PromptArgument describes an argument that a prompt template can accept.
+// When a prompt includes arguments, clients must provide values for all
+// required arguments when making a prompts/get request.
+type PromptArgument struct {
+	// The name of the argument.
+	Name string `json:"name"`
+	// A human-readable description of the argument.
+	Description string `json:"description,omitempty"`
+	// Whether this argument must be provided.
+	// If true, clients must include this argument when calling prompts/get.
+	Required bool `json:"required,omitempty"`
+}
+
+// Role represents the sender or recipient of messages and data in a
+// conversation.
+type Role string
+
+const (
+	RoleUser      Role = "user"
+	RoleAssistant Role = "assistant"
+)
+
+// PromptMessage describes a message returned as part of a prompt.
+//
+// This is similar to `SamplingMessage`, but also supports the embedding of
+// resources from the MCP server.
+type PromptMessage struct {
+	Role    Role        `json:"role"`
+	Content interface{} `json:"content"` // Can be TextContent, ImageContent, or EmbeddedResource
+}
+
+// EmbeddedResource represents the contents of a resource, embedded into a prompt or tool call result.
+//
+// It is up to the client how best to render embedded resources for the
+// benefit of the LLM and/or the user.
+type EmbeddedResource struct {
+	Annotated
+	Type     string           `json:"type"`
+	Resource ResourceContents `json:"resource"`
+}
+
+// PromptListChangedNotification is an optional notification from the server
+// to the client, informing it that the list of prompts it offers has changed. This
+// may be issued by servers without any previous subscription from the client.
+type PromptListChangedNotification struct {
+	Notification
+}
+
 // PromptOption is a function that configures a Prompt.
 // It provides a flexible way to set various properties of a Prompt using the functional options pattern.
 type PromptOption func(*Prompt)
