@@ -12,13 +12,11 @@ import (
 )
 
 func main() {
-	// Create a new client instance
-	// Using npx to run the filesystem server with /tmp as the only allowed directory
 	c, err := client.NewStdioMCPClient(
-		"go",
+		"npx",
 		[]string{}, // Empty ENV
-		"run",
-		"github.com/mark3labs/mcp-filesystem-server@latest",
+		"-y",
+		"@modelcontextprotocol/server-filesystem",
 		"/tmp",
 	)
 	if err != nil {

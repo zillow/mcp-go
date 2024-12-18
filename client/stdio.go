@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -41,7 +42,10 @@ func NewStdioMCPClient(
 ) (*StdioMCPClient, error) {
 	cmd := exec.Command(command, args...)
 
-	cmd.Env = env
+	mergedEnv := os.Environ()
+	mergedEnv = append(mergedEnv, env...)
+
+	cmd.Env = mergedEnv
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
