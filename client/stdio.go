@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,7 +24,7 @@ type StdioMCPClient struct {
 	stdin         io.WriteCloser
 	stdout        *bufio.Reader
 	requestID     atomic.Int64
-	responses     map[int64]chan *json.RawMessage
+	responses     map[int64]chan RPCResponse
 	mu            sync.RWMutex
 	done          chan struct{}
 	initialized   bool
@@ -61,7 +62,7 @@ func NewStdioMCPClient(
 		cmd:       cmd,
 		stdin:     stdin,
 		stdout:    bufio.NewReader(stdout),
-		responses: make(map[int64]chan *json.RawMessage),
+		responses: make(map[int64]chan RPCResponse),
 		done:      make(chan struct{}),
 	}
 
@@ -152,9 +153,13 @@ func (c *StdioMCPClient) readResponses() {
 
 			if ok {
 				if baseMessage.Error != nil {
-					ch <- nil // Signal error condition
+					ch <- RPCResponse{
+						Error: &baseMessage.Error.Message,
+					}
 				} else {
-					ch <- &baseMessage.Result
+					ch <- RPCResponse{
+						Response: &baseMessage.Result,
+					}
 				}
 				c.mu.Lock()
 				delete(c.responses, *baseMessage.ID)
@@ -192,7 +197,7 @@ func (c *StdioMCPClient) sendRequest(
 		Params:  params,
 	}
 
-	responseChan := make(chan *json.RawMessage, 1)
+	responseChan := make(chan RPCResponse, 1)
 	c.mu.Lock()
 	c.responses[id] = responseChan
 	c.mu.Unlock()
@@ -214,10 +219,10 @@ func (c *StdioMCPClient) sendRequest(
 		c.mu.Unlock()
 		return nil, ctx.Err()
 	case response := <-responseChan:
-		if response == nil {
-			return nil, fmt.Errorf("request failed")
+		if response.Error != nil {
+			return nil, errors.New(*response.Error)
 		}
-		return response, nil
+		return response.Response, nil
 	}
 }
 
