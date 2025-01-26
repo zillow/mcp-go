@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,7 +27,7 @@ type SSEMCPClient struct {
 	endpoint      *url.URL
 	httpClient    *http.Client
 	requestID     atomic.Int64
-	responses     map[int64]chan *json.RawMessage
+	responses     map[int64]chan RPCResponse
 	mu            sync.RWMutex
 	done          chan struct{}
 	initialized   bool
@@ -47,7 +48,7 @@ func NewSSEMCPClient(baseURL string) (*SSEMCPClient, error) {
 	return &SSEMCPClient{
 		baseURL:      parsedURL,
 		httpClient:   &http.Client{},
-		responses:    make(map[int64]chan *json.RawMessage),
+		responses:    make(map[int64]chan RPCResponse),
 		done:         make(chan struct{}),
 		endpointChan: make(chan struct{}),
 	}, nil
@@ -187,9 +188,13 @@ func (c *SSEMCPClient) handleSSEEvent(event, data string) {
 
 		if ok {
 			if baseMessage.Error != nil {
-				ch <- nil // Signal error condition
+				ch <- RPCResponse{
+					Error: &baseMessage.Error.Message,
+				}
 			} else {
-				ch <- &baseMessage.Result
+				ch <- RPCResponse{
+					Response: &baseMessage.Result,
+				}
 			}
 			c.mu.Lock()
 			delete(c.responses, *baseMessage.ID)
@@ -248,7 +253,7 @@ func (c *SSEMCPClient) sendRequest(
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	responseChan := make(chan *json.RawMessage, 1)
+	responseChan := make(chan RPCResponse, 1)
 	c.mu.Lock()
 	c.responses[id] = responseChan
 	c.mu.Unlock()
@@ -288,10 +293,10 @@ func (c *SSEMCPClient) sendRequest(
 		c.mu.Unlock()
 		return nil, ctx.Err()
 	case response := <-responseChan:
-		if response == nil {
-			return nil, fmt.Errorf("request failed")
+		if response.Error != nil {
+			return nil, errors.New(*response.Error)
 		}
-		return response, nil
+		return response.Response, nil
 	}
 }
 
@@ -555,7 +560,7 @@ func (c *SSEMCPClient) Close() error {
 	for _, ch := range c.responses {
 		close(ch)
 	}
-	c.responses = make(map[int64]chan *json.RawMessage)
+	c.responses = make(map[int64]chan RPCResponse)
 	c.mu.Unlock()
 
 	return nil
