@@ -236,16 +236,7 @@ func (c *SSEMCPClient) sendRequest(
 		Request: mcp.Request{
 			Method: method,
 		},
-	}
-
-	if params != nil {
-		paramsBytes, err := json.Marshal(params)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal params: %w", err)
-		}
-		if err := json.Unmarshal(paramsBytes, &request.Params); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal params: %w", err)
-		}
+		Params: params,
 	}
 
 	requestBytes, err := json.Marshal(request)

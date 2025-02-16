@@ -117,8 +117,9 @@ type RequestId interface{}
 
 // JSONRPCRequest represents a request that expects a response.
 type JSONRPCRequest struct {
-	JSONRPC string    `json:"jsonrpc"`
-	ID      RequestId `json:"id"`
+	JSONRPC string      `json:"jsonrpc"`
+	ID      RequestId   `json:"id"`
+	Params  interface{} `json:"params,omitempty"`
 	Request
 }
 

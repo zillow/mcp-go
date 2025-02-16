@@ -185,16 +185,13 @@ func (c *StdioMCPClient) sendRequest(
 	id := c.requestID.Add(1)
 
 	// Create the complete request structure
-	request := struct {
-		JSONRPC string      `json:"jsonrpc"`
-		ID      int64       `json:"id"`
-		Method  string      `json:"method"`
-		Params  interface{} `json:"params,omitempty"`
-	}{
+	request := mcp.JSONRPCRequest{
 		JSONRPC: mcp.JSONRPC_VERSION,
 		ID:      id,
-		Method:  method,
-		Params:  params,
+		Request: mcp.Request{
+			Method: method,
+		},
+		Params: params,
 	}
 
 	responseChan := make(chan RPCResponse, 1)
