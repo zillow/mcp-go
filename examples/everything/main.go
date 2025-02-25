@@ -187,12 +187,14 @@ func (s *MCPServer) runUpdateInterval() {
 func (s *MCPServer) handleReadResource(
 	ctx context.Context,
 	request mcp.ReadResourceRequest,
-) ([]mcp.ResourceContents, error) {
-	return []mcp.ResourceContents{
+) ([]interface{}, error) {
+	return []interface{}{
 		mcp.TextResourceContents{
-			URI:      "test://static/resource",
-			MIMEType: "text/plain",
-			Text:     "This is a sample resource",
+			ResourceContents: mcp.ResourceContents{
+				URI:      "test://static/resource",
+				MIMEType: "text/plain",
+			},
+			Text: "This is a sample resource",
 		},
 	}, nil
 }
@@ -200,12 +202,14 @@ func (s *MCPServer) handleReadResource(
 func (s *MCPServer) handleResourceTemplate(
 	ctx context.Context,
 	request mcp.ReadResourceRequest,
-) ([]mcp.ResourceContents, error) {
-	return []mcp.ResourceContents{
+) ([]interface{}, error) {
+	return []interface{}{
 		mcp.TextResourceContents{
-			URI:      request.Params.URI,
-			MIMEType: "text/plain",
-			Text:     "This is a sample resource",
+			ResourceContents: mcp.ResourceContents{
+				URI:      request.Params.URI,
+				MIMEType: "text/plain",
+			},
+			Text: "This is a sample resource",
 		},
 	}, nil
 }

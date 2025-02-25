@@ -3,10 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMCPServer_NewMCPServer(t *testing.T) {
@@ -673,12 +674,14 @@ func createTestServer() *MCPServer {
 			URI:  "resource://testresource",
 			Name: "My Resource",
 		},
-		func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-			return []mcp.ResourceContents{
+		func(ctx context.Context, request mcp.ReadResourceRequest) ([]interface{}, error) {
+			return []interface{}{
 				mcp.TextResourceContents{
-					URI:      "resource://testresource",
-					MIMEType: "text/plain",
-					Text:     "test content",
+					ResourceContents: mcp.ResourceContents{
+						URI:      "resource://testresource",
+						MIMEType: "text/plain",
+					},
+					Text: "test content",
 				},
 			}, nil
 		},

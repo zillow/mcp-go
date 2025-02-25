@@ -302,7 +302,7 @@ func NewListResourceTemplatesResult(
 // NewReadResourceResult creates a new ReadResourceResult with text content
 func NewReadResourceResult(text string) *ReadResourceResult {
 	return &ReadResourceResult{
-		Contents: []ResourceContents{
+		Contents: []interface{}{
 			TextResourceContents{
 				Text: text,
 			},
@@ -416,11 +416,12 @@ func ParseContent(contentMap map[string]any) (Content, error) {
 		}
 
 		if text != "" {
-			return NewEmbeddedResource(TextResourceContents{
-				URI:      uri,
-				MIMEType: mimeType,
-				Text:     text,
-			}), nil
+			return NewEmbeddedResource(
+				ResourceContents{
+					URI:      uri,
+					MIMEType: mimeType,
+				},
+			), nil
 		}
 	}
 
