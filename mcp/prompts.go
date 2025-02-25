@@ -77,18 +77,8 @@ const (
 // This is similar to `SamplingMessage`, but also supports the embedding of
 // resources from the MCP server.
 type PromptMessage struct {
-	Role    Role        `json:"role"`
-	Content interface{} `json:"content"` // Can be TextContent, ImageContent, or EmbeddedResource
-}
-
-// EmbeddedResource represents the contents of a resource, embedded into a prompt or tool call result.
-//
-// It is up to the client how best to render embedded resources for the
-// benefit of the LLM and/or the user.
-type EmbeddedResource struct {
-	Annotated
-	Type     string           `json:"type"`
-	Resource ResourceContents `json:"resource"`
+	Role    Role    `json:"role"`
+	Content Content `json:"content"` // Can be TextContent, ImageContent, or EmbeddedResource
 }
 
 // PromptListChangedNotification is an optional notification from the server
