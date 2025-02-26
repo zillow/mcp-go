@@ -1,6 +1,9 @@
 package mcp
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // ClientRequest types
 var _ ClientRequest = &PingRequest{}
@@ -426,4 +429,66 @@ func ParseContent(contentMap map[string]any) (Content, error) {
 	}
 
 	return nil, fmt.Errorf("unsupported content type: %s", contentType)
+}
+
+func ParseGetPromptResult(rawMessage *json.RawMessage) (*GetPromptResult, error) {
+	var jsonContent map[string]any
+	if err := json.Unmarshal(*rawMessage, &jsonContent); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	result := GetPromptResult{}
+
+	meta, ok := jsonContent["_meta"]
+	if ok {
+		if metaMap, ok := meta.(map[string]any); ok {
+			result.Meta = metaMap
+		}
+	}
+
+	description, ok := jsonContent["description"]
+	if ok {
+		if descriptionStr, ok := description.(string); ok {
+			result.Description = descriptionStr
+		}
+	}
+
+	messages, ok := jsonContent["messages"]
+	if ok {
+		messagesArr, ok := messages.([]any)
+		if !ok {
+			return nil, fmt.Errorf("messages is not an array")
+		}
+
+		for _, message := range messagesArr {
+			messageMap, ok := message.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("message is not an object")
+			}
+
+			// Extract role
+			roleStr := ExtractString(messageMap, "role")
+			if roleStr == "" || (roleStr != string(RoleAssistant) && roleStr != string(RoleUser)) {
+				return nil, fmt.Errorf("unsupported role: %s", roleStr)
+			}
+
+			// Extract content
+			contentMap, ok := messageMap["content"].(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("content is not an object")
+			}
+
+			// Process content
+			content, err := ParseContent(contentMap)
+			if err != nil {
+				return nil, err
+			}
+
+			// Append processed message
+			result.Messages = append(result.Messages, NewPromptMessage(Role(roleStr), content))
+
+		}
+	}
+
+	return &result, nil
 }

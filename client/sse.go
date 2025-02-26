@@ -462,65 +462,7 @@ func (c *SSEMCPClient) GetPrompt(
 		return nil, err
 	}
 
-	var jsonContent map[string]any
-	if err := json.Unmarshal(*response, &jsonContent); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	result := mcp.GetPromptResult{}
-
-	meta, ok := jsonContent["_meta"]
-	if ok {
-		if metaMap, ok := meta.(map[string]any); ok {
-			result.Meta = metaMap
-		}
-	}
-
-	description, ok := jsonContent["description"]
-	if ok {
-		if descriptionStr, ok := description.(string); ok {
-			result.Description = descriptionStr
-		}
-	}
-
-	messages, ok := jsonContent["messages"]
-	if ok {
-		messagesArr, ok := messages.([]any)
-		if !ok {
-			return nil, fmt.Errorf("messages is not an array")
-		}
-
-		for _, message := range messagesArr {
-			messageMap, ok := message.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("message is not an object")
-			}
-
-			// Extract role
-			roleStr := mcp.ExtractString(messageMap, "role")
-			if roleStr == "" || (roleStr != string(mcp.RoleAssistant) && roleStr != string(mcp.RoleUser)) {
-				return nil, fmt.Errorf("unsupported role: %s", roleStr)
-			}
-
-			// Extract content
-			contentMap, ok := messageMap["content"].(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("content is not an object")
-			}
-
-			// Process content
-			content, err := mcp.ParseContent(contentMap)
-			if err != nil {
-				return nil, err
-			}
-
-			// Append processed message
-			result.Messages = append(result.Messages, mcp.NewPromptMessage(mcp.Role(roleStr), content))
-
-		}
-	}
-
-	return &result, nil
+	return mcp.ParseGetPromptResult(response)
 }
 
 func (c *SSEMCPClient) ListTools(

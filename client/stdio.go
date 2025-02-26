@@ -388,12 +388,7 @@ func (c *StdioMCPClient) GetPrompt(
 		return nil, err
 	}
 
-	var result mcp.GetPromptResult
-	if err := json.Unmarshal(*response, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	return &result, nil
+	return mcp.ParseGetPromptResult(response)
 }
 
 func (c *StdioMCPClient) ListTools(
