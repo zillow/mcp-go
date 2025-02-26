@@ -417,12 +417,7 @@ func (c *StdioMCPClient) CallTool(
 		return nil, err
 	}
 
-	var result mcp.CallToolResult
-	if err := json.Unmarshal(*response, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	return &result, nil
+	return mcp.ParseCallToolResult(response)
 }
 
 func (c *StdioMCPClient) SetLevel(

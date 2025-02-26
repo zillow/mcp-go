@@ -491,54 +491,7 @@ func (c *SSEMCPClient) CallTool(
 		return nil, err
 	}
 
-	var jsonContent map[string]any
-	if err := json.Unmarshal(*response, &jsonContent); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	var result mcp.CallToolResult
-
-	meta, ok := jsonContent["_meta"]
-	if ok {
-		if metaMap, ok := meta.(map[string]any); ok {
-			result.Meta = metaMap
-		}
-	}
-
-	isError, ok := jsonContent["isError"]
-	if ok {
-		if isErrorBool, ok := isError.(bool); ok {
-			result.IsError = isErrorBool
-		}
-	}
-
-	contents, ok := jsonContent["content"]
-	if !ok {
-		return nil, fmt.Errorf("content is missing")
-	}
-
-	contentArr, ok := contents.([]any)
-	if !ok {
-		return nil, fmt.Errorf("content is not an array")
-	}
-
-	for _, content := range contentArr {
-		// Extract content
-		contentMap, ok := content.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("content is not an object")
-		}
-
-		// Process content
-		content, err := mcp.ParseContent(contentMap)
-		if err != nil {
-			return nil, err
-		}
-
-		result.Content = append(result.Content, content)
-	}
-
-	return &result, nil
+	return mcp.ParseCallToolResult(response)
 }
 
 func (c *SSEMCPClient) SetLevel(
