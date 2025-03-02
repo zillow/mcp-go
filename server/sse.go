@@ -152,7 +152,7 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 		s.baseURL,
 		sessionID,
 	)
-	
+
 	// Send the initial endpoint event
 	fmt.Fprintf(w, "event: endpoint\ndata: %s\r\n\r\n", messageEndpoint)
 	flusher.Flush()
@@ -211,7 +211,7 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	// Only send response if there is one (not for notifications)
 	if response != nil {
 		eventData, _ := json.Marshal(response)
-		
+
 		// Queue the event for sending via SSE
 		select {
 		case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):

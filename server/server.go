@@ -684,7 +684,7 @@ func (s *MCPServer) handleGetPrompt(
 	s.mu.RLock()
 	handler, ok := s.promptHandlers[request.Params.Name]
 	s.mu.RUnlock()
-	
+
 	if !ok {
 		return createErrorResponse(
 			id,
@@ -708,16 +708,16 @@ func (s *MCPServer) handleListTools(
 ) mcp.JSONRPCMessage {
 	s.mu.RLock()
 	tools := make([]mcp.Tool, 0, len(s.tools))
-	
+
 	// Get all tool names for consistent ordering
 	toolNames := make([]string, 0, len(s.tools))
 	for name := range s.tools {
 		toolNames = append(toolNames, name)
 	}
-	
+
 	// Sort the tool names for consistent ordering
 	sort.Strings(toolNames)
-	
+
 	// Add tools in sorted order
 	for _, name := range toolNames {
 		tools = append(tools, s.tools[name].Tool)
@@ -741,7 +741,7 @@ func (s *MCPServer) handleToolCall(
 	s.mu.RLock()
 	tool, ok := s.tools[request.Params.Name]
 	s.mu.RUnlock()
-	
+
 	if !ok {
 		return createErrorResponse(
 			id,
@@ -765,7 +765,7 @@ func (s *MCPServer) handleNotification(
 	s.mu.RLock()
 	handler, ok := s.notificationHandlers[notification.Method]
 	s.mu.RUnlock()
-	
+
 	if ok {
 		handler(ctx, notification)
 	}
