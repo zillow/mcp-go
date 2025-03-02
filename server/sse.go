@@ -23,9 +23,10 @@ type SSEServer struct {
 
 // sseSession represents an active SSE connection.
 type sseSession struct {
-	writer  http.ResponseWriter
-	flusher http.Flusher
-	done    chan struct{}
+	writer     http.ResponseWriter
+	flusher    http.Flusher
+	done       chan struct{}
+	eventQueue chan string // Channel for queuing events
 }
 
 // NewSSEServer creates a new SSE server instance with the given MCP server and base URL.
@@ -112,9 +113,10 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := uuid.New().String()
 	session := &sseSession{
-		writer:  w,
-		flusher: flusher,
-		done:    make(chan struct{}),
+		writer:     w,
+		flusher:    flusher,
+		done:       make(chan struct{}),
+		eventQueue: make(chan string, 100), // Buffer for events
 	}
 
 	s.sessions.Store(sessionID, session)
@@ -127,10 +129,15 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 			case serverNotification := <-s.server.notifications:
 				// Only forward notifications meant for this session
 				if serverNotification.Context.SessionID == sessionID {
-					s.SendEventToSession(
-						sessionID,
-						serverNotification.Notification,
-					)
+					eventData, err := json.Marshal(serverNotification.Notification)
+					if err == nil {
+						select {
+						case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
+							// Event queued successfully
+						case <-session.done:
+							return
+						}
+					}
 				}
 			case <-session.done:
 				return
@@ -145,11 +152,23 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 		s.baseURL,
 		sessionID,
 	)
+	
+	// Send the initial endpoint event
 	fmt.Fprintf(w, "event: endpoint\ndata: %s\r\n\r\n", messageEndpoint)
 	flusher.Flush()
 
-	<-r.Context().Done()
-	close(session.done)
+	// Main event loop - this runs in the HTTP handler goroutine
+	for {
+		select {
+		case event := <-session.eventQueue:
+			// Write the event to the response
+			fmt.Fprint(w, event)
+			flusher.Flush()
+		case <-r.Context().Done():
+			close(session.done)
+			return
+		}
+	}
 }
 
 // handleMessage processes incoming JSON-RPC messages from clients and sends responses
@@ -192,8 +211,16 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	// Only send response if there is one (not for notifications)
 	if response != nil {
 		eventData, _ := json.Marshal(response)
-		fmt.Fprintf(session.writer, "event: message\ndata: %s\n\n", eventData)
-		session.flusher.Flush()
+		
+		// Queue the event for sending via SSE
+		select {
+		case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
+			// Event queued successfully
+		case <-session.done:
+			// Session is closed, don't try to queue
+		default:
+			// Queue is full, could log this
+		}
 
 		// Send HTTP response
 		w.Header().Set("Content-Type", "application/json")
@@ -235,12 +262,13 @@ func (s *SSEServer) SendEventToSession(
 		return err
 	}
 
+	// Queue the event for sending via SSE
 	select {
+	case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
+		return nil
 	case <-session.done:
 		return fmt.Errorf("session closed")
 	default:
-		fmt.Fprintf(session.writer, "event: message\ndata: %s\n\n", eventData)
-		session.flusher.Flush()
-		return nil
+		return fmt.Errorf("event queue full")
 	}
 }
