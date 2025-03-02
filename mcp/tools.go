@@ -1,5 +1,13 @@
 package mcp
 
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+)
+
+var errToolSchemaConflict = errors.New("provide either InputSchema or RawInputSchema, not both")
+
 // ListToolsRequest is sent from the client to request a list of tools the
 // server has.
 type ListToolsRequest struct {
@@ -64,7 +72,35 @@ type Tool struct {
 	// A human-readable description of the tool.
 	Description string `json:"description,omitempty"`
 	// A JSON Schema object defining the expected parameters for the tool.
-	InputSchema ToolInputSchema `json:"inputSchema"`
+	InputSchema ToolInputSchema `json:"-"` // Hide this from JSON marshaling
+	// Alternative to InputSchema - allows arbitrary JSON Schema to be provided
+	RawInputSchema json.RawMessage `json:"-"` // Hide this from JSON marshaling
+}
+
+// MarshalJSON implements the json.Marshaler interface for Tool.
+// It handles marshaling either InputSchema or RawInputSchema based on which is set.
+func (t Tool) MarshalJSON() ([]byte, error) {
+	// Create a map to build the JSON structure
+	m := make(map[string]interface{}, 3)
+
+	// Add the name and description
+	m["name"] = t.Name
+	if t.Description != "" {
+		m["description"] = t.Description
+	}
+
+	// Determine which schema to use
+	if t.RawInputSchema != nil {
+		if t.InputSchema.Type != "" {
+			return nil, fmt.Errorf("tool %s has both InputSchema and RawInputSchema set: %w", t.Name, errToolSchemaConflict)
+		}
+		m["inputSchema"] = t.RawInputSchema
+	} else {
+		// Use the structured InputSchema
+		m["inputSchema"] = t.InputSchema
+	}
+
+	return json.Marshal(m)
 }
 
 type ToolInputSchema struct {
@@ -100,6 +136,23 @@ func NewTool(name string, opts ...ToolOption) Tool {
 
 	for _, opt := range opts {
 		opt(&tool)
+	}
+
+	return tool
+}
+
+// NewToolWithRawSchema creates a new Tool with the given name and a raw JSON
+// Schema. This allows for arbitrary JSON Schema to be used for the tool's input
+// schema.
+//
+// NOTE a [Tool] built in such a way is incompatible with the [ToolOption] and
+// runtime errors will result from supplying a [ToolOption] to a [Tool] built
+// with this function.
+func NewToolWithRawSchema(name, description string, schema json.RawMessage) Tool {
+	tool := Tool{
+		Name:           name,
+		Description:    description,
+		RawInputSchema: schema,
 	}
 
 	return tool
