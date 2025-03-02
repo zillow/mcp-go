@@ -3,10 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMCPServer_NewMCPServer(t *testing.T) {
@@ -693,7 +694,7 @@ func createTestServer() *MCPServer {
 		},
 		func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{
-				Content: []interface{}{
+				Content: []mcp.Content{
 					mcp.TextContent{
 						Type: "text",
 						Text: "test result",

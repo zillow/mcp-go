@@ -280,7 +280,7 @@ func (s *MCPServer) handleEchoTool(
 		return nil, fmt.Errorf("invalid message argument")
 	}
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
 				Text: fmt.Sprintf("Echo: %s", message),
@@ -301,7 +301,7 @@ func (s *MCPServer) handleAddTool(
 	}
 	sum := a + b
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
 				Text: fmt.Sprintf("The sum of %f and %f is %f.", a, b, sum),
@@ -330,7 +330,7 @@ func (s *MCPServer) handleSendNotification(
 	}
 
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
 				Text: "notification sent successfully",
@@ -373,7 +373,7 @@ func (s *MCPServer) handleLongRunningOperationTool(
 	}
 
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
 				Text: fmt.Sprintf(
@@ -412,7 +412,7 @@ func (s *MCPServer) handleGetTinyImageTool(
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
 				Text: "This is a tiny image:",

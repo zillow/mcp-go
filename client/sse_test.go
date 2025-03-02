@@ -25,7 +25,7 @@ func TestSSEMCPClient(t *testing.T) {
 		mcp.WithString("parameter-1", mcp.Description("A string tool parameter")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return &mcp.CallToolResult{
-			Content: []interface{}{
+			Content: []mcp.Content{
 				mcp.TextContent{
 					Type: "text",
 					Text: "Input parameter: " + request.Params.Arguments["parameter-1"].(string),

@@ -585,6 +585,10 @@ type Annotated struct {
 	} `json:"annotations,omitempty"`
 }
 
+type Content interface {
+	isContent()
+}
+
 // TextContent represents text provided to or from an LLM.
 // It must have Type set to "text".
 type TextContent struct {
@@ -593,6 +597,8 @@ type TextContent struct {
 	// The text content of the message.
 	Text string `json:"text"`
 }
+
+func (TextContent) isContent() {}
 
 // ImageContent represents an image provided to or from an LLM.
 // It must have Type set to "image".
@@ -604,6 +610,20 @@ type ImageContent struct {
 	// The MIME type of the image. Different providers may support different image types.
 	MIMEType string `json:"mimeType"`
 }
+
+func (ImageContent) isContent() {}
+
+// EmbeddedResource represents the contents of a resource, embedded into a prompt or tool call result.
+//
+// It is up to the client how best to render embedded resources for the
+// benefit of the LLM and/or the user.
+type EmbeddedResource struct {
+	Annotated
+	Type     string           `json:"type"`
+	Resource ResourceContents `json:"resource"`
+}
+
+func (EmbeddedResource) isContent() {}
 
 // ModelPreferences represents the server's preferences for model selection,
 // requested of the client during sampling.
