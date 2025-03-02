@@ -28,42 +28,30 @@ const (
 	COMPLEX PromptName = "complex_prompt"
 )
 
-type MCPServer struct {
-	server        *server.MCPServer
-	subscriptions map[string]bool
-	updateTicker  *time.Ticker
-	allResources  []mcp.Resource
-}
+func NewMCPServer() *server.MCPServer {
+	mcpServer := server.NewMCPServer(
+		"example-servers/everything",
+		"1.0.0",
+		server.WithResourceCapabilities(true, true),
+		server.WithPromptCapabilities(true),
+		server.WithLogging(),
+	)
 
-func NewMCPServer() *MCPServer {
-	s := &MCPServer{
-		server: server.NewMCPServer(
-			"example-servers/everything",
-			"1.0.0",
-			server.WithResourceCapabilities(true, true),
-			server.WithPromptCapabilities(true),
-			server.WithLogging(),
-		),
-		subscriptions: make(map[string]bool),
-		updateTicker:  time.NewTicker(5 * time.Second),
-		allResources:  generateResources(),
-	}
-
-	s.server.AddResource(mcp.NewResource("test://static/resource",
+	mcpServer.AddResource(mcp.NewResource("test://static/resource",
 		"Static Resource",
 		mcp.WithMIMEType("text/plain"),
-	), s.handleReadResource)
-	s.server.AddResourceTemplate(
+	), handleReadResource)
+	mcpServer.AddResourceTemplate(
 		mcp.NewResourceTemplate(
 			"test://dynamic/resource/{id}",
 			"Dynamic Resource",
 		),
-		s.handleResourceTemplate,
+		handleResourceTemplate,
 	)
-	s.server.AddPrompt(mcp.NewPrompt(string(SIMPLE),
+	mcpServer.AddPrompt(mcp.NewPrompt(string(SIMPLE),
 		mcp.WithPromptDescription("A simple prompt"),
-	), s.handleSimplePrompt)
-	s.server.AddPrompt(mcp.NewPrompt(string(COMPLEX),
+	), handleSimplePrompt)
+	mcpServer.AddPrompt(mcp.NewPrompt(string(COMPLEX),
 		mcp.WithPromptDescription("A complex prompt"),
 		mcp.WithArgument("temperature",
 			mcp.ArgumentDescription("The temperature parameter for generation"),
@@ -73,21 +61,21 @@ func NewMCPServer() *MCPServer {
 			mcp.ArgumentDescription("The style to use for the response"),
 			mcp.RequiredArgument(),
 		),
-	), s.handleComplexPrompt)
-	s.server.AddTool(mcp.NewTool(string(ECHO),
+	), handleComplexPrompt)
+	mcpServer.AddTool(mcp.NewTool(string(ECHO),
 		mcp.WithDescription("Echoes back the input"),
 		mcp.WithString("message",
 			mcp.Description("Message to echo"),
 			mcp.Required(),
 		),
-	), s.handleEchoTool)
+	), handleEchoTool)
 
-	s.server.AddTool(
+	mcpServer.AddTool(
 		mcp.NewTool("notify"),
-		s.handleSendNotification,
+		handleSendNotification,
 	)
 
-	s.server.AddTool(mcp.NewTool(string(ADD),
+	mcpServer.AddTool(mcp.NewTool(string(ADD),
 		mcp.WithDescription("Adds two numbers"),
 		mcp.WithNumber("a",
 			mcp.Description("First number"),
@@ -97,8 +85,8 @@ func NewMCPServer() *MCPServer {
 			mcp.Description("Second number"),
 			mcp.Required(),
 		),
-	), s.handleAddTool)
-	s.server.AddTool(mcp.NewTool(
+	), handleAddTool)
+	mcpServer.AddTool(mcp.NewTool(
 		string(LONG_RUNNING_OPERATION),
 		mcp.WithDescription(
 			"Demonstrates a long running operation with progress updates",
@@ -111,7 +99,7 @@ func NewMCPServer() *MCPServer {
 			mcp.Description("Number of steps in the operation"),
 			mcp.DefaultNumber(5),
 		),
-	), s.handleLongRunningOperationTool)
+	), handleLongRunningOperationTool)
 
 	// s.server.AddTool(mcp.Tool{
 	// 	Name:        string(SAMPLE_LLM),
@@ -131,15 +119,13 @@ func NewMCPServer() *MCPServer {
 	// 		},
 	// 	},
 	// }, s.handleSampleLLMTool)
-	s.server.AddTool(mcp.NewTool(string(GET_TINY_IMAGE),
+	mcpServer.AddTool(mcp.NewTool(string(GET_TINY_IMAGE),
 		mcp.WithDescription("Returns the MCP_TINY_IMAGE"),
-	), s.handleGetTinyImageTool)
+	), handleGetTinyImageTool)
 
-	s.server.AddNotificationHandler("notification", s.handleNotification)
+	mcpServer.AddNotificationHandler("notification", handleNotification)
 
-	go s.runUpdateInterval()
-
-	return s
+	return mcpServer
 }
 
 func generateResources() []mcp.Resource {
@@ -163,7 +149,7 @@ func generateResources() []mcp.Resource {
 	return resources
 }
 
-func (s *MCPServer) runUpdateInterval() {
+func runUpdateInterval() {
 	// for range s.updateTicker.C {
 	// 	for uri := range s.subscriptions {
 	// 		s.server.HandleMessage(
@@ -184,7 +170,7 @@ func (s *MCPServer) runUpdateInterval() {
 	// }
 }
 
-func (s *MCPServer) handleReadResource(
+func handleReadResource(
 	ctx context.Context,
 	request mcp.ReadResourceRequest,
 ) ([]interface{}, error) {
@@ -199,7 +185,7 @@ func (s *MCPServer) handleReadResource(
 	}, nil
 }
 
-func (s *MCPServer) handleResourceTemplate(
+func handleResourceTemplate(
 	ctx context.Context,
 	request mcp.ReadResourceRequest,
 ) ([]interface{}, error) {
@@ -214,7 +200,7 @@ func (s *MCPServer) handleResourceTemplate(
 	}, nil
 }
 
-func (s *MCPServer) handleSimplePrompt(
+func handleSimplePrompt(
 	ctx context.Context,
 	request mcp.GetPromptRequest,
 ) (*mcp.GetPromptResult, error) {
@@ -232,7 +218,7 @@ func (s *MCPServer) handleSimplePrompt(
 	}, nil
 }
 
-func (s *MCPServer) handleComplexPrompt(
+func handleComplexPrompt(
 	ctx context.Context,
 	request mcp.GetPromptRequest,
 ) (*mcp.GetPromptResult, error) {
@@ -270,7 +256,7 @@ func (s *MCPServer) handleComplexPrompt(
 	}, nil
 }
 
-func (s *MCPServer) handleEchoTool(
+func handleEchoTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
@@ -289,7 +275,7 @@ func (s *MCPServer) handleEchoTool(
 	}, nil
 }
 
-func (s *MCPServer) handleAddTool(
+func handleAddTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
@@ -310,7 +296,7 @@ func (s *MCPServer) handleAddTool(
 	}, nil
 }
 
-func (s *MCPServer) handleSendNotification(
+func handleSendNotification(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
@@ -339,15 +325,11 @@ func (s *MCPServer) handleSendNotification(
 	}, nil
 }
 
-func (s *MCPServer) ServeSSE(addr string) *server.SSEServer {
-	return server.NewSSEServer(s.server, fmt.Sprintf("http://%s", addr))
+func ServeSSE(mcpServer *server.MCPServer, addr string) *server.SSEServer {
+	return server.NewSSEServer(mcpServer, fmt.Sprintf("http://%s", addr))
 }
 
-func (s *MCPServer) ServeStdio() error {
-	return server.ServeStdio(s.server)
-}
-
-func (s *MCPServer) handleLongRunningOperationTool(
+func handleLongRunningOperationTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
@@ -407,7 +389,7 @@ func (s *MCPServer) handleLongRunningOperationTool(
 // 	}, nil
 // }
 
-func (s *MCPServer) handleGetTinyImageTool(
+func handleGetTinyImageTool(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
@@ -430,15 +412,11 @@ func (s *MCPServer) handleGetTinyImageTool(
 	}, nil
 }
 
-func (s *MCPServer) handleNotification(
+func handleNotification(
 	ctx context.Context,
 	notification mcp.JSONRPCNotification,
 ) {
 	log.Printf("Received notification: %s", notification.Method)
-}
-
-func (s *MCPServer) Serve() error {
-	return server.ServeStdio(s.server)
 }
 
 func main() {
@@ -452,24 +430,19 @@ func main() {
 	)
 	flag.Parse()
 
-	server := NewMCPServer()
+	mcpServer := NewMCPServer()
 
-	switch transport {
-	case "stdio":
-		if err := server.ServeStdio(); err != nil {
-			log.Fatalf("Server error: %v", err)
-		}
-	case "sse":
-		sseServer := server.ServeSSE("localhost:8080")
+	// Only check for "sse" since stdio is the default
+	if transport == "sse" {
+		sseServer := ServeSSE(mcpServer, "localhost:8080")
 		log.Printf("SSE server listening on :8080")
 		if err := sseServer.Start(":8080"); err != nil {
 			log.Fatalf("Server error: %v", err)
 		}
-	default:
-		log.Fatalf(
-			"Invalid transport type: %s. Must be 'stdio' or 'sse'",
-			transport,
-		)
+	} else {
+		if err := server.ServeStdio(mcpServer); err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
 	}
 }
 

@@ -272,3 +272,15 @@ func (s *SSEServer) SendEventToSession(
 		return fmt.Errorf("event queue full")
 	}
 }
+
+// ServeHTTP implements the http.Handler interface.
+func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Path {
+	case "/sse":
+		s.handleSSE(w, r)
+	case "/message":
+		s.handleMessage(w, r)
+	default:
+		http.NotFound(w, r)
+	}
+}
