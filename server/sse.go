@@ -43,19 +43,7 @@ func NewTestServer(server *MCPServer) *httptest.Server {
 		server: server,
 	}
 
-	testServer := httptest.NewServer(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/sse":
-				sseServer.handleSSE(w, r)
-			case "/message":
-				sseServer.handleMessage(w, r)
-			default:
-				http.NotFound(w, r)
-			}
-		}),
-	)
-
+	testServer := httptest.NewServer(sseServer)
 	sseServer.baseURL = testServer.URL
 	return testServer
 }
@@ -63,13 +51,9 @@ func NewTestServer(server *MCPServer) *httptest.Server {
 // Start begins serving SSE connections on the specified address.
 // It sets up HTTP handlers for SSE and message endpoints.
 func (s *SSEServer) Start(addr string) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/sse", s.handleSSE)
-	mux.HandleFunc("/message", s.handleMessage)
-
 	s.srv = &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: s,
 	}
 
 	return s.srv.ListenAndServe()
