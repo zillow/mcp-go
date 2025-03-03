@@ -219,23 +219,20 @@ resource := mcp.NewResource(
     "Project README",
     mcp.WithResourceDescription("The project's README file"), 
     mcp.WithMIMEType("text/markdown"),
-    mcp.WithAnnotations([]mcp.Role{mcp.RoleAssistant}, 0.8),
 )
 
 // Add resource with its handler
-s.AddResource(resource, func(ctx context.Context, request mcp.ReadResourceRequest) ([]interface{}, error) {
+s.AddResource(resource, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
     content, err := os.ReadFile("README.md")
     if err != nil {
         return nil, err
     }
     
-    return []interface{}{
+    return []mcp.ResourceContents{
         mcp.TextResourceContents{
-            ResourceContents: mcp.ResourceContents{
-                URI:      "docs://readme",
-                MIMEType: "text/markdown",
-            },
-            Text: string(content),
+            URI:      "docs://readme",
+            MIMEType: "text/markdown",
+            Text:     string(content),
         },
     }, nil
 })
@@ -250,31 +247,30 @@ template := mcp.NewResourceTemplate(
     "User Profile",
     mcp.WithTemplateDescription("Returns user profile information"),
     mcp.WithTemplateMIMEType("application/json"),
-    mcp.WithTemplateAnnotations([]mcp.Role{mcp.RoleAssistant, mcp.RoleUser}, 0.5),
 )
 
 // Add template with its handler
-s.AddResourceTemplate(template, func(ctx context.Context, request mcp.ReadResourceRequest) ([]interface{}, error) {
-    userID := request.Params.URI // Extract ID from the full URI
+s.AddResourceTemplate(template, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+    // Extract ID from the URI using regex matching
+    // The server automatically matches URIs to templates
+    userID := extractIDFromURI(request.Params.URI)
     
     profile, err := getUserProfile(userID)  // Your DB/API call here
     if err != nil {
         return nil, err
     }
     
-    return []interface{}{
+    return []mcp.ResourceContents{
         mcp.TextResourceContents{
-            ResourceContents: mcp.ResourceContents{
-                URI:      fmt.Sprintf("users://%s/profile", userID),
-                MIMEType: "application/json",
-            },
-            Text: profile,
+            URI:      request.Params.URI,
+            MIMEType: "application/json",
+            Text:     profile,
         },
     }, nil
 })
 ```
 
-The examples are simple but demonstrate the core concepts. Resources can be much more sophisticated - serving multiple contents, using annotations, integrating with databases or external APIs, etc.
+The examples are simple but demonstrate the core concepts. Resources can be much more sophisticated - serving multiple contents, integrating with databases or external APIs, etc.
 </details>
 
 ### Tools
