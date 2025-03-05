@@ -42,11 +42,11 @@ func TestMCPServer_Capabilities(t *testing.T) {
 				assert.Equal(t, "1.0.0", initResult.ServerInfo.Version)
 				assert.NotNil(t, initResult.Capabilities.Resources)
 				assert.False(t, initResult.Capabilities.Resources.Subscribe)
-				assert.True(t, initResult.Capabilities.Resources.ListChanged)
+				assert.False(t, initResult.Capabilities.Resources.ListChanged)
 				assert.NotNil(t, initResult.Capabilities.Prompts)
-				assert.True(t, initResult.Capabilities.Prompts.ListChanged)
+				assert.False(t, initResult.Capabilities.Prompts.ListChanged)
 				assert.NotNil(t, initResult.Capabilities.Tools)
-				assert.True(t, initResult.Capabilities.Tools.ListChanged)
+				assert.False(t, initResult.Capabilities.Tools.ListChanged)
 				assert.Nil(t, initResult.Capabilities.Logging)
 			},
 		},
@@ -55,6 +55,7 @@ func TestMCPServer_Capabilities(t *testing.T) {
 			options: []ServerOption{
 				WithResourceCapabilities(true, true),
 				WithPromptCapabilities(true),
+				WithToolCapabilities(true),
 				WithLogging(),
 			},
 			validate: func(t *testing.T, response mcp.JSONRPCMessage) {
@@ -73,8 +74,8 @@ func TestMCPServer_Capabilities(t *testing.T) {
 				assert.Equal(t, "1.0.0", initResult.ServerInfo.Version)
 
 				assert.NotNil(t, initResult.Capabilities.Resources)
-				// Resources capabilities are now always false for subscribe and true for listChanged
-				assert.False(t, initResult.Capabilities.Resources.Subscribe)
+
+				assert.True(t, initResult.Capabilities.Resources.Subscribe)
 				assert.True(t, initResult.Capabilities.Resources.ListChanged)
 
 				assert.NotNil(t, initResult.Capabilities.Prompts)
@@ -82,6 +83,43 @@ func TestMCPServer_Capabilities(t *testing.T) {
 
 				assert.NotNil(t, initResult.Capabilities.Tools)
 				assert.True(t, initResult.Capabilities.Tools.ListChanged)
+
+				assert.NotNil(t, initResult.Capabilities.Logging)
+			},
+		},
+		{
+			name: "Specific capabilities",
+			options: []ServerOption{
+				WithResourceCapabilities(true, false),
+				WithPromptCapabilities(true),
+				WithToolCapabilities(false),
+				WithLogging(),
+			},
+			validate: func(t *testing.T, response mcp.JSONRPCMessage) {
+				resp, ok := response.(mcp.JSONRPCResponse)
+				assert.True(t, ok)
+
+				initResult, ok := resp.Result.(mcp.InitializeResult)
+				assert.True(t, ok)
+
+				assert.Equal(
+					t,
+					mcp.LATEST_PROTOCOL_VERSION,
+					initResult.ProtocolVersion,
+				)
+				assert.Equal(t, "test-server", initResult.ServerInfo.Name)
+				assert.Equal(t, "1.0.0", initResult.ServerInfo.Version)
+
+				assert.NotNil(t, initResult.Capabilities.Resources)
+
+				assert.True(t, initResult.Capabilities.Resources.Subscribe)
+				assert.False(t, initResult.Capabilities.Resources.ListChanged)
+
+				assert.NotNil(t, initResult.Capabilities.Prompts)
+				assert.True(t, initResult.Capabilities.Prompts.ListChanged)
+
+				assert.NotNil(t, initResult.Capabilities.Tools)
+				assert.False(t, initResult.Capabilities.Tools.ListChanged)
 
 				assert.NotNil(t, initResult.Capabilities.Logging)
 			},
@@ -525,6 +563,7 @@ func TestMCPServer_HandleUndefinedHandlers(t *testing.T) {
 	server := NewMCPServer("test-server", "1.0.0",
 		WithResourceCapabilities(true, true),
 		WithPromptCapabilities(true),
+		WithToolCapabilities(true),
 	)
 
 	// Add a test tool to enable tool capabilities
@@ -600,14 +639,10 @@ func TestMCPServer_HandleUndefinedHandlers(t *testing.T) {
 }
 
 func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
-	server := NewMCPServer(
-		"test-server",
-		"1.0.0",
-	)
-
 	tests := []struct {
 		name        string
 		message     string
+		options  []ServerOption
 		expectedErr int
 	}{
 		{
@@ -620,6 +655,9 @@ func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
                         "name": "test-tool"
                     }
                 }`,
+			options: []ServerOption{
+				WithToolCapabilities(false),
+			},
 			expectedErr: mcp.METHOD_NOT_FOUND,
 		},
 		{
@@ -632,6 +670,9 @@ func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
                         "name": "test-prompt"
                     }
                 }`,
+			options: []ServerOption{
+				WithPromptCapabilities(false),
+			},
 			expectedErr: mcp.METHOD_NOT_FOUND,
 		},
 		{
@@ -644,12 +685,16 @@ func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
                         "uri": "test-resource"
                     }
                 }`,
+			options: []ServerOption{
+				WithResourceCapabilities(false, false),
+			},
 			expectedErr: mcp.METHOD_NOT_FOUND,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			server := NewMCPServer("test-server", "1.0.0", tt.options...)
 			response := server.HandleMessage(
 				context.Background(),
 				[]byte(tt.message),
