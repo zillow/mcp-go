@@ -40,13 +40,9 @@ func TestMCPServer_Capabilities(t *testing.T) {
 				)
 				assert.Equal(t, "test-server", initResult.ServerInfo.Name)
 				assert.Equal(t, "1.0.0", initResult.ServerInfo.Version)
-				assert.NotNil(t, initResult.Capabilities.Resources)
-				assert.False(t, initResult.Capabilities.Resources.Subscribe)
-				assert.False(t, initResult.Capabilities.Resources.ListChanged)
-				assert.NotNil(t, initResult.Capabilities.Prompts)
-				assert.False(t, initResult.Capabilities.Prompts.ListChanged)
-				assert.NotNil(t, initResult.Capabilities.Tools)
-				assert.False(t, initResult.Capabilities.Tools.ListChanged)
+				assert.Nil(t, initResult.Capabilities.Resources)
+				assert.Nil(t, initResult.Capabilities.Prompts)
+				assert.Nil(t, initResult.Capabilities.Tools)
 				assert.Nil(t, initResult.Capabilities.Logging)
 			},
 		},
@@ -118,8 +114,8 @@ func TestMCPServer_Capabilities(t *testing.T) {
 				assert.NotNil(t, initResult.Capabilities.Prompts)
 				assert.True(t, initResult.Capabilities.Prompts.ListChanged)
 
-				assert.NotNil(t, initResult.Capabilities.Tools)
-				assert.False(t, initResult.Capabilities.Tools.ListChanged)
+				// Tools capability should be nil when WithToolCapabilities(false) is used
+				assert.Nil(t, initResult.Capabilities.Tools)
 
 				assert.NotNil(t, initResult.Capabilities.Logging)
 			},
@@ -210,7 +206,15 @@ func TestMCPServer_Tools(t *testing.T) {
 				assert.Equal(t, "notifications/tools/list_changed", notifications[0].Notification.Method)
 				// One for DeleteTools
 				assert.Equal(t, "notifications/tools/list_changed", notifications[1].Notification.Method)
-				assert.Equal(t, "Tools not supported", toolsList.(mcp.JSONRPCError).Error.Message)
+				
+				// Expect a successful response with an empty list of tools
+				resp, ok := toolsList.(mcp.JSONRPCResponse)
+				assert.True(t, ok, "Expected JSONRPCResponse, got %T", toolsList)
+				
+				result, ok := resp.Result.(mcp.ListToolsResult)
+				assert.True(t, ok, "Expected ListToolsResult, got %T", resp.Result)
+				
+				assert.Empty(t, result.Tools, "Expected empty tools list")
 			},
 		},
 	}
