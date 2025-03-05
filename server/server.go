@@ -163,13 +163,10 @@ type toolCapabilities struct {
 // WithResourceCapabilities configures resource-related server capabilities
 func WithResourceCapabilities(subscribe, listChanged bool) ServerOption {
 	return func(s *MCPServer) {
-		if !subscribe && !listChanged {
-			s.capabilities.resources = nil
-		} else {
-			s.capabilities.resources = &resourceCapabilities{
-				subscribe:   subscribe,
-				listChanged: listChanged,
-			}
+		// Always create a non-nil capability object
+		s.capabilities.resources = &resourceCapabilities{
+			subscribe:   subscribe,
+			listChanged: listChanged,
 		}
 	}
 }
@@ -177,12 +174,9 @@ func WithResourceCapabilities(subscribe, listChanged bool) ServerOption {
 // WithPromptCapabilities configures prompt-related server capabilities
 func WithPromptCapabilities(listChanged bool) ServerOption {
 	return func(s *MCPServer) {
-		if !listChanged {
-			s.capabilities.prompts = nil
-		} else {
-			s.capabilities.prompts = &promptCapabilities{
-				listChanged: listChanged,
-			}
+		// Always create a non-nil capability object
+		s.capabilities.prompts = &promptCapabilities{
+			listChanged: listChanged,
 		}
 	}
 }
@@ -190,12 +184,9 @@ func WithPromptCapabilities(listChanged bool) ServerOption {
 // WithToolCapabilities configures tool-related server capabilities
 func WithToolCapabilities(listChanged bool) ServerOption {
 	return func(s *MCPServer) {
-		if !listChanged {
-			s.capabilities.tools = nil
-		} else {
-			s.capabilities.tools = &toolCapabilities{
-				listChanged: listChanged,
-			}
+		// Always create a non-nil capability object
+		s.capabilities.tools = &toolCapabilities{
+			listChanged: listChanged,
 		}
 	}
 }

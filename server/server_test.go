@@ -114,8 +114,9 @@ func TestMCPServer_Capabilities(t *testing.T) {
 				assert.NotNil(t, initResult.Capabilities.Prompts)
 				assert.True(t, initResult.Capabilities.Prompts.ListChanged)
 
-				// Tools capability should be nil when WithToolCapabilities(false) is used
-				assert.Nil(t, initResult.Capabilities.Tools)
+				// Tools capability should be non-nil even when WithToolCapabilities(false) is used
+				assert.NotNil(t, initResult.Capabilities.Tools)
+				assert.False(t, initResult.Capabilities.Tools.ListChanged)
 
 				assert.NotNil(t, initResult.Capabilities.Logging)
 			},
@@ -646,7 +647,7 @@ func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
 	tests := []struct {
 		name        string
 		message     string
-		options  []ServerOption
+		options     []ServerOption
 		expectedErr int
 	}{
 		{
@@ -659,9 +660,7 @@ func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
                         "name": "test-tool"
                     }
                 }`,
-			options: []ServerOption{
-				WithToolCapabilities(false),
-			},
+			options: []ServerOption{},  // No capabilities at all
 			expectedErr: mcp.METHOD_NOT_FOUND,
 		},
 		{
@@ -674,9 +673,7 @@ func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
                         "name": "test-prompt"
                     }
                 }`,
-			options: []ServerOption{
-				WithPromptCapabilities(false),
-			},
+			options: []ServerOption{},  // No capabilities at all
 			expectedErr: mcp.METHOD_NOT_FOUND,
 		},
 		{
@@ -689,9 +686,7 @@ func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
                         "uri": "test-resource"
                     }
                 }`,
-			options: []ServerOption{
-				WithResourceCapabilities(false, false),
-			},
+			options: []ServerOption{},  // No capabilities at all
 			expectedErr: mcp.METHOD_NOT_FOUND,
 		},
 	}
