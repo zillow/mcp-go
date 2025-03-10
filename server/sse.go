@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -25,6 +26,7 @@ type sseSession struct {
 type SSEServer struct {
 	server          *MCPServer
 	baseURL         string
+	basePath        string
 	messageEndpoint string
 	sseEndpoint     string
 	sessions        sync.Map
@@ -38,6 +40,18 @@ type Option func(*SSEServer)
 func WithBaseURL(baseURL string) Option {
 	return func(s *SSEServer) {
 		s.baseURL = baseURL
+	}
+}
+
+// Add a new option for setting base path
+func WithBasePath(basePath string) Option {
+	return func(s *SSEServer) {
+		// Ensure the path starts with / and doesn't end with /
+		if !strings.HasPrefix(basePath, "/") {
+			basePath = "/" + basePath
+		}
+		s.basePath = strings.TrimSuffix(basePath, "/")
+		s.baseURL = s.baseURL + s.basePath
 	}
 }
 
@@ -68,6 +82,7 @@ func NewSSEServer(server *MCPServer, opts ...Option) *SSEServer {
 		server:          server,
 		sseEndpoint:     "/sse",
 		messageEndpoint: "/message",
+		basePath:        "",
 	}
 
 	// Apply all options
@@ -299,12 +314,22 @@ func (s *SSEServer) SendEventToSession(
 
 // ServeHTTP implements the http.Handler interface.
 func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path {
-	case s.sseEndpoint:
+	path := r.URL.Path
+
+	// Construct the full SSE and message paths
+	ssePath := s.basePath + s.sseEndpoint
+	messagePath := s.basePath + s.messageEndpoint
+
+	// Use exact path matching rather than Contains
+	if path == ssePath {
 		s.handleSSE(w, r)
-	case s.messageEndpoint:
-		s.handleMessage(w, r)
-	default:
-		http.NotFound(w, r)
+		return
 	}
+
+	if path == messagePath {
+		s.handleMessage(w, r)
+		return
+	}
+
+	http.NotFound(w, r)
 }
