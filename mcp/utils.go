@@ -216,19 +216,6 @@ func NewToolResultText(text string) *CallToolResult {
 	}
 }
 
-// NewToolResultError creates a new CallToolResult that indicates an error
-func NewToolResultError(errText string) *CallToolResult {
-	return &CallToolResult{
-		Content: []Content{
-			TextContent{
-				Type: "text",
-				Text: errText,
-			},
-		},
-		IsError: true,
-	}
-}
-
 // NewToolResultImage creates a new CallToolResult with both text and image content
 func NewToolResultImage(text, imageData, mimeType string) *CallToolResult {
 	return &CallToolResult{

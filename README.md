@@ -19,6 +19,7 @@ package main
 
 import (
     "context"
+    "errors"
     "fmt"
 
     "github.com/mark3labs/mcp-go/mcp"
@@ -53,7 +54,7 @@ func main() {
 func helloHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
     name, ok := request.Params.Arguments["name"].(string)
     if !ok {
-        return mcp.NewToolResultError("name must be a string"), nil
+        return nil, errors.New("name must be a string")
     }
 
     return mcp.NewToolResultText(fmt.Sprintf("Hello, %s!", name)), nil
@@ -107,6 +108,7 @@ package main
 
 import (
     "context"
+    "errors"
     "fmt"
 
     "github.com/mark3labs/mcp-go/mcp"
@@ -156,7 +158,7 @@ func main() {
             result = x * y
         case "divide":
             if y == 0 {
-                return mcp.NewToolResultError("Cannot divide by zero"), nil
+                return nil, errors.New("Cannot divide by zero")
             }
             result = x / y
         }
@@ -318,7 +320,7 @@ s.AddTool(calculatorTool, func(ctx context.Context, request mcp.CallToolRequest)
         result = x * y
     case "divide":
         if y == 0 {
-            return mcp.NewToolResultError("Division by zero is not allowed"), nil
+            return nil, errors.New("Division by zero is not allowed")
         }
         result = x / y
     }
@@ -363,20 +365,20 @@ s.AddTool(httpTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp
         req, err = http.NewRequest(method, url, nil)
     }
     if err != nil {
-        return mcp.NewToolResultError(fmt.Sprintf("Failed to create request: %v", err)), nil
+        return nil, fmt.Errorf("Failed to create request: %v", err)
     }
 
     client := &http.Client{}
     resp, err := client.Do(req)
     if err != nil {
-        return mcp.NewToolResultError(fmt.Sprintf("Request failed: %v", err)), nil
+        return nil, fmt.Errorf("Request failed: %v", err)
     }
     defer resp.Body.Close()
 
     // Return response
     respBody, err := io.ReadAll(resp.Body)
     if err != nil {
-        return mcp.NewToolResultError(fmt.Sprintf("Failed to read response: %v", err)), nil
+        return nil, fmt.Errorf("Failed to read response: %v", err)
     }
 
     return mcp.NewToolResultText(fmt.Sprintf("Status: %d\nBody: %s", resp.StatusCode, string(respBody))), nil
