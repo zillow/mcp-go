@@ -99,48 +99,48 @@ func (c *SSEMCPClient) Start(ctx context.Context) error {
 // readSSE continuously reads the SSE stream and processes events.
 // It runs until the connection is closed or an error occurs.
 func (c *SSEMCPClient) readSSE(reader io.ReadCloser) {
-    defer reader.Close()
+	defer reader.Close()
 
-    br := bufio.NewReader(reader)
-    var event, data string
+	br := bufio.NewReader(reader)
+	var event, data string
 
-    for {
-        line, err := br.ReadString('\n')
-        if err != nil {
-            if err == io.EOF {
-                // Process any pending event before exit
-                if event != "" && data != "" {
-                    c.handleSSEEvent(event, data)
-                }
-                break
-            }
-            select {
-            case <-c.done:
-                return
-            default:
-                fmt.Printf("SSE stream error: %v\n", err)
-                return
-            }
-        }
+	for {
+		line, err := br.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				// Process any pending event before exit
+				if event != "" && data != "" {
+					c.handleSSEEvent(event, data)
+				}
+				break
+			}
+			select {
+			case <-c.done:
+				return
+			default:
+				fmt.Printf("SSE stream error: %v\n", err)
+				return
+			}
+		}
 
-        // Remove only newline markers
-        line = strings.TrimRight(line, "\r\n")
-        if line == "" {
-            // Empty line means end of event
-            if event != "" && data != "" {
-                c.handleSSEEvent(event, data)
-                event = ""
-                data = ""
-            }
-            continue
-        }
+		// Remove only newline markers
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			// Empty line means end of event
+			if event != "" && data != "" {
+				c.handleSSEEvent(event, data)
+				event = ""
+				data = ""
+			}
+			continue
+		}
 
-        if strings.HasPrefix(line, "event:") {
-            event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
-        } else if strings.HasPrefix(line, "data:") {
-            data = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-        }
-    }
+		if strings.HasPrefix(line, "event:") {
+			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+		} else if strings.HasPrefix(line, "data:") {
+			data = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		}
+	}
 }
 
 // handleSSEEvent processes SSE events based on their type.
