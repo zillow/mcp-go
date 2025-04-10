@@ -391,7 +391,7 @@ func (c *SSEMCPClient) Initialize(
 			err,
 		)
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 
 	c.initialized = true
 	return &result, nil
