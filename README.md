@@ -12,6 +12,10 @@
 
 [![Tutorial](http://img.youtube.com/vi/qoaeYMrXJH0/0.jpg)](http://www.youtube.com/watch?v=qoaeYMrXJH0 "Tutorial")
 
+<br>
+
+Discuss the SDK on [Discord](https://discord.gg/RqSS2NQVsY)
+
 </div>
 
 ```go
