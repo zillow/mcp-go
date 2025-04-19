@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -31,6 +32,10 @@ func compileTestServer(outputPath string) error {
 func TestStdio(t *testing.T) {
 	// Compile mock server
 	mockServerPath := filepath.Join(os.TempDir(), "mockstdio_server")
+		// Add .exe suffix on Windows
+		if runtime.GOOS == "windows" {
+			mockServerPath += ".exe"
+		}
 	if err := compileTestServer(mockServerPath); err != nil {
 		t.Fatalf("Failed to compile mock server: %v", err)
 	}
@@ -302,8 +307,11 @@ func TestStdioErrors(t *testing.T) {
 	})
 
 	t.Run("RequestBeforeStart", func(t *testing.T) {
-		// 创建一个新的 Stdio 实例但不调用 Start 方法
 		mockServerPath := filepath.Join(os.TempDir(), "mockstdio_server")
+		// Add .exe suffix on Windows
+		if runtime.GOOS == "windows" {
+			mockServerPath += ".exe"
+		}
 		if err := compileTestServer(mockServerPath); err != nil {
 			t.Fatalf("Failed to compile mock server: %v", err)
 		}
@@ -311,7 +319,7 @@ func TestStdioErrors(t *testing.T) {
 
 		uninitiatedStdio := NewStdio(mockServerPath, nil)
 
-		// 准备一个请求
+		// Prepare a request
 		request := JSONRPCRequest{
 			JSONRPC: "2.0",
 			ID:      99,
@@ -331,6 +339,10 @@ func TestStdioErrors(t *testing.T) {
 	t.Run("RequestAfterClose", func(t *testing.T) {
 		// Compile mock server
 		mockServerPath := filepath.Join(os.TempDir(), "mockstdio_server")
+		// Add .exe suffix on Windows
+		if runtime.GOOS == "windows" {
+			mockServerPath += ".exe"
+		}
 		if err := compileTestServer(mockServerPath); err != nil {
 			t.Fatalf("Failed to compile mock server: %v", err)
 		}
