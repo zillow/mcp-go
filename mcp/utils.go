@@ -130,6 +130,7 @@ func NewProgressNotification(
 	token ProgressToken,
 	progress float64,
 	total *float64,
+	message *string,
 ) ProgressNotification {
 	notification := ProgressNotification{
 		Notification: Notification{
@@ -139,6 +140,7 @@ func NewProgressNotification(
 			ProgressToken ProgressToken `json:"progressToken"`
 			Progress      float64       `json:"progress"`
 			Total         float64       `json:"total,omitempty"`
+			Message       string        `json:"message,omitempty"`
 		}{
 			ProgressToken: token,
 			Progress:      progress,
@@ -146,6 +148,9 @@ func NewProgressNotification(
 	}
 	if total != nil {
 		notification.Params.Total = *total
+	}
+	if message != nil {
+		notification.Params.Message = *message
 	}
 	return notification
 }
