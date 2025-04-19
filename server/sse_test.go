@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -744,7 +744,7 @@ func TestSSEServer(t *testing.T) {
 
 	t.Run("Client receives and can respond to ping messages", func(t *testing.T) {
 		mcpServer := NewMCPServer("test", "1.0.0")
-		testServer := NewTestServer(mcpServer, 
+		testServer := NewTestServer(mcpServer,
 			WithKeepAlive(true),
 			WithKeepAliveInterval(50*time.Millisecond),
 		)
@@ -757,73 +757,73 @@ func TestSSEServer(t *testing.T) {
 		defer sseResp.Body.Close()
 
 		reader := bufio.NewReader(sseResp.Body)
-		
+
 		var messageURL string
 		var pingID float64
-		
+
 		for {
 			line, err := reader.ReadString('\n')
 			if err != nil {
 				t.Fatalf("Failed to read SSE event: %v", err)
 			}
-			
+
 			if strings.HasPrefix(line, "event: endpoint") {
 				dataLine, err := reader.ReadString('\n')
 				if err != nil {
 					t.Fatalf("Failed to read endpoint data: %v", err)
 				}
 				messageURL = strings.TrimSpace(strings.TrimPrefix(dataLine, "data: "))
-				
+
 				_, err = reader.ReadString('\n')
 				if err != nil {
 					t.Fatalf("Failed to read blank line: %v", err)
 				}
 			}
-			
+
 			if strings.HasPrefix(line, "event: message") {
 				dataLine, err := reader.ReadString('\n')
 				if err != nil {
 					t.Fatalf("Failed to read message data: %v", err)
 				}
-				
+
 				pingData := strings.TrimSpace(strings.TrimPrefix(dataLine, "data:"))
 				var pingMsg mcp.JSONRPCRequest
 				if err := json.Unmarshal([]byte(pingData), &pingMsg); err != nil {
 					t.Fatalf("Failed to parse ping message: %v", err)
 				}
-				
+
 				if pingMsg.Method == "ping" {
 					pingID = pingMsg.ID.(float64)
 					t.Logf("Received ping with ID: %f", pingID)
 					break // We got the ping, exit the loop
 				}
-				
+
 				_, err = reader.ReadString('\n')
 				if err != nil {
 					t.Fatalf("Failed to read blank line: %v", err)
 				}
 			}
-			
+
 			if messageURL != "" && pingID != 0 {
 				break
 			}
 		}
-		
+
 		if messageURL == "" {
 			t.Fatal("Did not receive message endpoint URL")
 		}
-		
+
 		pingResponse := map[string]any{
 			"jsonrpc": "2.0",
 			"id":      pingID,
 			"result":  map[string]any{},
 		}
-		
+
 		requestBody, err := json.Marshal(pingResponse)
 		if err != nil {
 			t.Fatalf("Failed to marshal ping response: %v", err)
 		}
-		
+
 		resp, err := http.Post(
 			messageURL,
 			"application/json",
@@ -833,22 +833,22 @@ func TestSSEServer(t *testing.T) {
 			t.Fatalf("Failed to send ping response: %v", err)
 		}
 		defer resp.Body.Close()
-		
+
 		if resp.StatusCode != http.StatusAccepted {
 			t.Errorf("Expected status 202 for ping response, got %d", resp.StatusCode)
 		}
-		
+
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatalf("Failed to read response body: %v", err)
 		}
-		
+
 		if len(body) > 0 {
 			var response map[string]any
 			if err := json.Unmarshal(body, &response); err != nil {
 				t.Fatalf("Failed to parse response body: %v", err)
 			}
-			
+
 			if response["error"] != nil {
 				t.Errorf("Expected no error in response, got %v", response["error"])
 			}

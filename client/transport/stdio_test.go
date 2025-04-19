@@ -32,10 +32,10 @@ func compileTestServer(outputPath string) error {
 func TestStdio(t *testing.T) {
 	// Compile mock server
 	mockServerPath := filepath.Join(os.TempDir(), "mockstdio_server")
-		// Add .exe suffix on Windows
-		if runtime.GOOS == "windows" {
-			mockServerPath += ".exe"
-		}
+	// Add .exe suffix on Windows
+	if runtime.GOOS == "windows" {
+		mockServerPath += ".exe"
+	}
 	if err := compileTestServer(mockServerPath); err != nil {
 		t.Fatalf("Failed to compile mock server: %v", err)
 	}
