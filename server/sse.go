@@ -259,7 +259,7 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Session registration failed: %v", err), http.StatusInternalServerError)
 		return
 	}
-	defer s.server.UnregisterSession(sessionID)
+	defer s.server.UnregisterSession(r.Context(), sessionID)
 
 	// Start notification handler for this session
 	go func() {
@@ -438,6 +438,7 @@ func (s *SSEServer) SendEventToSession(
 		return fmt.Errorf("event queue full")
 	}
 }
+
 func (s *SSEServer) GetUrlPath(input string) (string, error) {
 	parse, err := url.Parse(input)
 	if err != nil {
@@ -449,6 +450,7 @@ func (s *SSEServer) GetUrlPath(input string) (string, error) {
 func (s *SSEServer) CompleteSseEndpoint() string {
 	return s.baseURL + s.basePath + s.sseEndpoint
 }
+
 func (s *SSEServer) CompleteSsePath() string {
 	path, err := s.GetUrlPath(s.CompleteSseEndpoint())
 	if err != nil {
@@ -460,6 +462,7 @@ func (s *SSEServer) CompleteSsePath() string {
 func (s *SSEServer) CompleteMessageEndpoint() string {
 	return s.baseURL + s.basePath + s.messageEndpoint
 }
+
 func (s *SSEServer) CompleteMessagePath() string {
 	path, err := s.GetUrlPath(s.CompleteMessageEndpoint())
 	if err != nil {
