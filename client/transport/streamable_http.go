@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -206,7 +207,8 @@ func (c *StreamableHTTP) SendRequest(
 	}
 
 	// Handle different response types
-	switch resp.Header.Get("Content-Type") {
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	switch mediaType {
 	case "application/json":
 		// Single response
 		var response JSONRPCResponse
@@ -248,13 +250,13 @@ func (c *StreamableHTTP) handleSSEResponse(ctx context.Context, reader io.ReadCl
 		c.readSSE(ctx, reader, func(event, data string) {
 
 			// (unsupported: batching)
-	
+
 			var message JSONRPCResponse
 			if err := json.Unmarshal([]byte(data), &message); err != nil {
 				fmt.Printf("failed to unmarshal message: %v\n", err)
 				return
 			}
-	
+
 			// Handle notification
 			if message.ID == nil {
 				var notification mcp.JSONRPCNotification
@@ -269,7 +271,7 @@ func (c *StreamableHTTP) handleSSEResponse(ctx context.Context, reader io.ReadCl
 				c.notifyMu.RUnlock()
 				return
 			}
-	
+
 			responseChan <- &message
 		})
 	}()
