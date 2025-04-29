@@ -67,12 +67,12 @@ func (f *sessionTestClientWithTools) Initialized() bool {
 func (f *sessionTestClientWithTools) GetSessionTools() map[string]ServerTool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	
+
 	// Return a copy of the map to prevent concurrent modification
 	if f.sessionTools == nil {
 		return nil
 	}
-	
+
 	toolsCopy := make(map[string]ServerTool, len(f.sessionTools))
 	for k, v := range f.sessionTools {
 		toolsCopy[k] = v
@@ -83,13 +83,13 @@ func (f *sessionTestClientWithTools) GetSessionTools() map[string]ServerTool {
 func (f *sessionTestClientWithTools) SetSessionTools(tools map[string]ServerTool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	// Create a copy of the map to prevent concurrent modification
 	if tools == nil {
 		f.sessionTools = nil
 		return
 	}
-	
+
 	toolsCopy := make(map[string]ServerTool, len(tools))
 	for k, v := range tools {
 		toolsCopy[k] = v

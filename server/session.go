@@ -226,10 +226,10 @@ func (s *MCPServer) AddSessionTools(sessionID string, tools ...ServerTool) error
 
 	// Get existing tools (this should return a thread-safe copy)
 	sessionTools := session.GetSessionTools()
-	
+
 	// Create a new map to avoid concurrent modification issues
 	newSessionTools := make(map[string]ServerTool, len(sessionTools)+len(tools))
-	
+
 	// Copy existing tools
 	if sessionTools != nil {
 		for k, v := range sessionTools {
@@ -284,7 +284,7 @@ func (s *MCPServer) DeleteSessionTools(sessionID string, names ...string) error 
 
 	// Create a new map to avoid concurrent modification issues
 	newSessionTools := make(map[string]ServerTool, len(sessionTools))
-	
+
 	// Copy existing tools except those being deleted
 	for k, v := range sessionTools {
 		newSessionTools[k] = v
