@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -364,7 +365,7 @@ func (s *SSEServer) GetMessageEndpointForClient(sessionID string) string {
 }
 
 // handleMessage processes incoming JSON-RPC messages from clients and sends responses
-// back through both the SSE connection and HTTP response.
+// back through the SSE connection and 202 code to HTTP response.
 func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeJSONRPCError(w, nil, mcp.INVALID_REQUEST, "Method not allowed")
@@ -396,31 +397,37 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Process message through MCPServer
-	response := s.server.HandleMessage(ctx, rawMessage)
+	// quick return request, send 202 Accepted with no body, then deal the message and sent response via SSE
+	w.WriteHeader(http.StatusAccepted)
 
-	// Only send response if there is one (not for notifications)
-	if response != nil {
-		eventData, _ := json.Marshal(response)
+	go func() {
+		// Process message through MCPServer
+		response := s.server.HandleMessage(ctx, rawMessage)
 
-		// Queue the event for sending via SSE
-		select {
-		case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
-			// Event queued successfully
-		case <-session.done:
-			// Session is closed, don't try to queue
-		default:
-			// Queue is full, could log this
+		// Only send response if there is one (not for notifications)
+		if response != nil {
+			var message string
+			if eventData, err := json.Marshal(response); err != nil {
+				// If there is an error marshalling the response, send a generic error response
+				log.Printf("failed to marshal response: %v", err)
+				message = fmt.Sprintf("event: message\ndata: {\"error\": \"internal error\",\"jsonrpc\": \"2.0\", \"id\": null}\n\n")
+				return
+			} else {
+				message = fmt.Sprintf("event: message\ndata: %s\n\n", eventData)
+			}
+
+			// Queue the event for sending via SSE
+			select {
+			case session.eventQueue <- message:
+				// Event queued successfully
+			case <-session.done:
+				// Session is closed, don't try to queue
+			default:
+				// Queue is full, log this situation
+				log.Printf("Event queue full for session %s", sessionID)
+			}
 		}
-
-		// Send HTTP response
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(response)
-	} else {
-		// For notifications, just send 202 Accepted with no body
-		w.WriteHeader(http.StatusAccepted)
-	}
+	}()
 }
 
 // writeJSONRPCError writes a JSON-RPC error response with the given error details.
