@@ -2,12 +2,12 @@ package client
 
 import (
 	"context"
-	"github.com/mark3labs/mcp-go/client/transport"
+	"github.com/zillow/mcp-go/client/transport"
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/zillow/mcp-go/mcp"
+	"github.com/zillow/mcp-go/server"
 )
 
 func TestSSEMCPClient(t *testing.T) {

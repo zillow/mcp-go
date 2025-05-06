@@ -7,8 +7,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/zillow/mcp-go/client"
+	"github.com/zillow/mcp-go/mcp"
 )
 
 func main() {

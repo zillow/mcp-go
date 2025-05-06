@@ -1,8 +1,8 @@
 <!-- omit in toc -->
 # MCP Go 🚀
-[![Build](https://github.com/mark3labs/mcp-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mark3labs/mcp-go/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/mark3labs/mcp-go?cache)](https://goreportcard.com/report/github.com/mark3labs/mcp-go)
-[![GoDoc](https://pkg.go.dev/badge/github.com/mark3labs/mcp-go.svg)](https://pkg.go.dev/github.com/mark3labs/mcp-go)
+[![Build](https://github.com/zillow/mcp-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zillow/mcp-go/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/zillow/mcp-go?cache)](https://goreportcard.com/report/github.com/zillow/mcp-go)
+[![GoDoc](https://pkg.go.dev/badge/github.com/zillow/mcp-go.svg)](https://pkg.go.dev/github.com/zillow/mcp-go)
 
 <div align="center">
 
@@ -26,8 +26,8 @@ import (
     "errors"
     "fmt"
 
-    "github.com/mark3labs/mcp-go/mcp"
-    "github.com/mark3labs/mcp-go/server"
+    "github.com/zillow/mcp-go/mcp"
+    "github.com/zillow/mcp-go/server"
 )
 
 func main() {
@@ -104,7 +104,7 @@ MCP Go handles all the complex protocol details and server management, so you ca
 ## Installation
 
 ```bash
-go get github.com/mark3labs/mcp-go
+go get github.com/zillow/mcp-go
 ```
 
 ## Quickstart
@@ -119,8 +119,8 @@ import (
     "errors"
     "fmt"
 
-    "github.com/mark3labs/mcp-go/mcp"
-    "github.com/mark3labs/mcp-go/server"
+    "github.com/zillow/mcp-go/mcp"
+    "github.com/zillow/mcp-go/server"
 )
 
 func main() {
@@ -760,7 +760,7 @@ Go version >= 1.23
 Create a fork of this repository, then clone it:
 
 ```bash
-git clone https://github.com/mark3labs/mcp-go.git
+git clone https://github.com/zillow/mcp-go.git
 cd mcp-go
 ```
 

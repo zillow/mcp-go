@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/zillow/mcp-go/mcp"
 	"github.com/stretchr/testify/require"
 )
 
