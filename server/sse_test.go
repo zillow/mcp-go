@@ -24,7 +24,7 @@ func TestSSEServer(t *testing.T) {
 		mcpServer := NewMCPServer("test", "1.0.0")
 		sseServer := NewSSEServer(mcpServer,
 			WithBaseURL("http://localhost:8080"),
-			WithBasePath("/mcp"),
+			WithStaticBasePath("/mcp"),
 		)
 
 		if sseServer == nil {
@@ -62,7 +62,7 @@ func TestSSEServer(t *testing.T) {
 		defer sseResp.Body.Close()
 
 		// Read the endpoint event
-		endpointEvent, err := readSeeEvent(sseResp)
+		endpointEvent, err := readSSEEvent(sseResp)
 		if err != nil {
 			t.Fatalf("Failed to read SSE response: %v", err)
 		}
@@ -195,7 +195,7 @@ func TestSSEServer(t *testing.T) {
 				}
 				defer resp.Body.Close()
 
-				endpointEvent, err = readSeeEvent(sseResp)
+				endpointEvent, err = readSSEEvent(sseResp)
 				if err != nil {
 					t.Fatalf("Failed to read SSE response: %v", err)
 				}
@@ -203,7 +203,6 @@ func TestSSEServer(t *testing.T) {
 					strings.Split(strings.Split(endpointEvent, "data: ")[1], "\n")[0],
 				)
 
-				fmt.Printf("========> %v", respFromSee)
 				var response map[string]interface{}
 				if err := json.NewDecoder(strings.NewReader(respFromSee)).Decode(&response); err != nil {
 					t.Errorf(
@@ -499,7 +498,7 @@ func TestSSEServer(t *testing.T) {
 
 	t.Run("works as http.Handler with custom basePath", func(t *testing.T) {
 		mcpServer := NewMCPServer("test", "1.0.0")
-		sseServer := NewSSEServer(mcpServer, WithBasePath("/mcp"))
+		sseServer := NewSSEServer(mcpServer, WithStaticBasePath("/mcp"))
 
 		ts := httptest.NewServer(sseServer)
 		defer ts.Close()
@@ -590,7 +589,7 @@ func TestSSEServer(t *testing.T) {
 		defer sseResp.Body.Close()
 
 		// Read the endpoint event
-		endpointEvent, err := readSeeEvent(sseResp)
+		endpointEvent, err := readSSEEvent(sseResp)
 		if err != nil {
 			t.Fatalf("Failed to read SSE response: %v", err)
 		}
@@ -632,16 +631,16 @@ func TestSSEServer(t *testing.T) {
 		}
 
 		// Verify response
-		endpointEvent, err = readSeeEvent(sseResp)
+		endpointEvent, err = readSSEEvent(sseResp)
 		if err != nil {
 			t.Fatalf("Failed to read SSE response: %v", err)
 		}
-		respFromSee := strings.TrimSpace(
+		respFromSSE := strings.TrimSpace(
 			strings.Split(strings.Split(endpointEvent, "data: ")[1], "\n")[0],
 		)
 
 		var response map[string]interface{}
-		if err := json.NewDecoder(strings.NewReader(respFromSee)).Decode(&response); err != nil {
+		if err := json.NewDecoder(strings.NewReader(respFromSSE)).Decode(&response); err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
 		}
 
@@ -666,7 +665,8 @@ func TestSSEServer(t *testing.T) {
 			t.Fatalf("Failed to marshal tool request: %v", err)
 		}
 
-		req, err := http.NewRequest(http.MethodPost, messageURL, bytes.NewBuffer(requestBody))
+		var req *http.Request
+		req, err = http.NewRequest(http.MethodPost, messageURL, bytes.NewBuffer(requestBody))
 		if err != nil {
 			t.Fatalf("Failed to create tool request: %v", err)
 		}
@@ -679,17 +679,17 @@ func TestSSEServer(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		endpointEvent, err = readSeeEvent(sseResp)
+		endpointEvent, err = readSSEEvent(sseResp)
 		if err != nil {
 			t.Fatalf("Failed to read SSE response: %v", err)
 		}
 
-		respFromSee = strings.TrimSpace(
+		respFromSSE = strings.TrimSpace(
 			strings.Split(strings.Split(endpointEvent, "data: ")[1], "\n")[0],
 		)
 
 		response = make(map[string]interface{})
-		if err := json.NewDecoder(strings.NewReader(respFromSee)).Decode(&response); err != nil {
+		if err := json.NewDecoder(strings.NewReader(respFromSSE)).Decode(&response); err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
 		}
 
@@ -716,7 +716,7 @@ func TestSSEServer(t *testing.T) {
 		useFullURLForMessageEndpoint := false
 		srv := &http.Server{}
 		rands := []SSEOption{
-			WithBasePath(basePath),
+			WithStaticBasePath(basePath),
 			WithBaseURL(baseURL),
 			WithMessageEndpoint(messageEndpoint),
 			WithUseFullURLForMessageEndpoint(useFullURLForMessageEndpoint),
@@ -1129,9 +1129,280 @@ func TestSSEServer(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("SessionWithTools implementation", func(t *testing.T) {
+		// Create hooks to track sessions
+		hooks := &Hooks{}
+		var registeredSession *sseSession
+		hooks.AddOnRegisterSession(func(ctx context.Context, session ClientSession) {
+			if s, ok := session.(*sseSession); ok {
+				registeredSession = s
+			}
+		})
+
+		mcpServer := NewMCPServer("test", "1.0.0", WithHooks(hooks))
+		testServer := NewTestServer(mcpServer)
+		defer testServer.Close()
+
+		// Connect to SSE endpoint
+		sseResp, err := http.Get(fmt.Sprintf("%s/sse", testServer.URL))
+		if err != nil {
+			t.Fatalf("Failed to connect to SSE endpoint: %v", err)
+		}
+		defer sseResp.Body.Close()
+
+		// Read the endpoint event to ensure session is established
+		_, err = readSSEEvent(sseResp)
+		if err != nil {
+			t.Fatalf("Failed to read SSE response: %v", err)
+		}
+
+		// Verify we got a session
+		if registeredSession == nil {
+			t.Fatal("Session was not registered via hook")
+		}
+
+		// Test setting and getting tools
+		tools := map[string]ServerTool{
+			"test_tool": {
+				Tool: mcp.Tool{
+					Name:        "test_tool",
+					Description: "A test tool",
+					Annotations: mcp.ToolAnnotation{
+						Title: "Test Tool",
+					},
+				},
+				Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+					return mcp.NewToolResultText("test"), nil
+				},
+			},
+		}
+
+		// Test SetSessionTools
+		registeredSession.SetSessionTools(tools)
+
+		// Test GetSessionTools
+		retrievedTools := registeredSession.GetSessionTools()
+		if len(retrievedTools) != 1 {
+			t.Errorf("Expected 1 tool, got %d", len(retrievedTools))
+		}
+		if tool, exists := retrievedTools["test_tool"]; !exists {
+			t.Error("Expected test_tool to exist")
+		} else if tool.Tool.Name != "test_tool" {
+			t.Errorf("Expected tool name test_tool, got %s", tool.Tool.Name)
+		}
+
+		// Test concurrent access
+		var wg sync.WaitGroup
+		for i := 0; i < 10; i++ {
+			wg.Add(2)
+			go func(i int) {
+				defer wg.Done()
+				tools := map[string]ServerTool{
+					fmt.Sprintf("tool_%d", i): {
+						Tool: mcp.Tool{
+							Name:        fmt.Sprintf("tool_%d", i),
+							Description: fmt.Sprintf("Tool %d", i),
+							Annotations: mcp.ToolAnnotation{
+								Title: fmt.Sprintf("Tool %d", i),
+							},
+						},
+					},
+				}
+				registeredSession.SetSessionTools(tools)
+			}(i)
+			go func() {
+				defer wg.Done()
+				_ = registeredSession.GetSessionTools()
+			}()
+		}
+		wg.Wait()
+
+		// Verify we can still get and set tools after concurrent access
+		finalTools := map[string]ServerTool{
+			"final_tool": {
+				Tool: mcp.Tool{
+					Name:        "final_tool",
+					Description: "Final Tool",
+					Annotations: mcp.ToolAnnotation{
+						Title: "Final Tool",
+					},
+				},
+			},
+		}
+		registeredSession.SetSessionTools(finalTools)
+		retrievedTools = registeredSession.GetSessionTools()
+		if len(retrievedTools) != 1 {
+			t.Errorf("Expected 1 tool, got %d", len(retrievedTools))
+		}
+		if _, exists := retrievedTools["final_tool"]; !exists {
+			t.Error("Expected final_tool to exist")
+		}
+	})
+
+	t.Run("TestServerResponseMarshalError", func(t *testing.T) {
+		mcpServer := NewMCPServer("test", "1.0.0",
+			WithResourceCapabilities(true, true),
+			WithHooks(&Hooks{
+				OnAfterInitialize: []OnAfterInitializeFunc{
+					func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
+						result.Result.Meta = map[string]interface{}{"invalid": func() {}} // marshal will fail
+					},
+				},
+			}),
+		)
+		testServer := NewTestServer(mcpServer)
+		defer testServer.Close()
+
+		// Connect to SSE endpoint
+		sseResp, err := http.Get(fmt.Sprintf("%s/sse", testServer.URL))
+		if err != nil {
+			t.Fatalf("Failed to connect to SSE endpoint: %v", err)
+		}
+		defer sseResp.Body.Close()
+
+		// Read the endpoint event
+		endpointEvent, err := readSSEEvent(sseResp)
+		if err != nil {
+			t.Fatalf("Failed to read SSE response: %v", err)
+		}
+		if !strings.Contains(endpointEvent, "event: endpoint") {
+			t.Fatalf("Expected endpoint event, got: %s", endpointEvent)
+		}
+
+		// Extract message endpoint URL
+		messageURL := strings.TrimSpace(
+			strings.Split(strings.Split(endpointEvent, "data: ")[1], "\n")[0],
+		)
+
+		// Send initialize request
+		initRequest := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "initialize",
+			"params": map[string]interface{}{
+				"protocolVersion": "2024-11-05",
+				"clientInfo": map[string]interface{}{
+					"name":    "test-client",
+					"version": "1.0.0",
+				},
+			},
+		}
+
+		requestBody, err := json.Marshal(initRequest)
+		if err != nil {
+			t.Fatalf("Failed to marshal request: %v", err)
+		}
+
+		resp, err := http.Post(
+			messageURL,
+			"application/json",
+			bytes.NewBuffer(requestBody),
+		)
+		if err != nil {
+			t.Fatalf("Failed to send message: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusAccepted {
+			t.Errorf("Expected status 202, got %d", resp.StatusCode)
+		}
+
+		endpointEvent, err = readSSEEvent(sseResp)
+		if err != nil {
+			t.Fatalf("Failed to read SSE response: %v", err)
+		}
+
+		if !strings.Contains(endpointEvent, "\"id\": null") {
+			t.Errorf("Expected id to be null")
+		}
+	})
+
+	t.Run("Message processing continues after we return back result to client", func(t *testing.T) {
+		mcpServer := NewMCPServer("test", "1.0.0")
+
+		processingCompleted := make(chan struct{})
+		processingStarted := make(chan struct{})
+
+		mcpServer.AddTool(mcp.NewTool("slowMethod"), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			close(processingStarted) // signal for processing started
+
+			select {
+			case <-ctx.Done(): // If this happens, the test will fail because processingCompleted won't be closed
+				return nil, fmt.Errorf("context was canceled")
+			case <-time.After(1 * time.Second): // Simulate processing time
+				// Successfully completed processing, now close the completed channel to signal completion
+				close(processingCompleted)
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{
+						mcp.TextContent{
+							Type: "text",
+							Text: "success",
+						},
+					},
+				}, nil
+			}
+		})
+
+		testServer := NewTestServer(mcpServer)
+		defer testServer.Close()
+
+		sseResp, err := http.Get(fmt.Sprintf("%s/sse", testServer.URL))
+		require.NoError(t, err, "Failed to connect to SSE endpoint")
+		defer sseResp.Body.Close()
+
+		endpointEvent, err := readSSEEvent(sseResp)
+		require.NoError(t, err, "Failed to read SSE response")
+		require.Contains(t, endpointEvent, "event: endpoint", "Expected endpoint event")
+
+		messageURL := strings.TrimSpace(
+			strings.Split(strings.Split(endpointEvent, "data: ")[1], "\n")[0],
+		)
+
+		messageRequest := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "tools/call",
+			"params": map[string]interface{}{
+				"name":       "slowMethod",
+				"parameters": map[string]interface{}{},
+			},
+		}
+
+		requestBody, err := json.Marshal(messageRequest)
+		require.NoError(t, err, "Failed to marshal request")
+
+		ctx, cancel := context.WithCancel(context.Background())
+		req, err := http.NewRequestWithContext(ctx, "POST", messageURL, bytes.NewBuffer(requestBody))
+		require.NoError(t, err, "Failed to create request")
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		require.NoError(t, err, "Failed to send message")
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusAccepted, resp.StatusCode, "Expected status 202 Accepted")
+
+		// Wait for processing to start
+		select {
+		case <-processingStarted: // Processing has started, now cancel the client context to simulate disconnection
+		case <-time.After(2 * time.Second):
+			t.Fatal("Timed out waiting for processing to start")
+		}
+
+		cancel() // cancel the client context to simulate disconnection
+
+		// wait for processing to complete, if the test passes, it means the processing continued despite client disconnection
+		select {
+		case <-processingCompleted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("Processing did not complete after client disconnection")
+		}
+	})
 }
 
-func readSeeEvent(sseResp *http.Response) (string, error) {
+func readSSEEvent(sseResp *http.Response) (string, error) {
 	buf := make([]byte, 1024)
 	n, err := sseResp.Body.Read(buf)
 	if err != nil {
