@@ -479,7 +479,7 @@ func (s *MCPServer) AddNotificationHandler(
 
 func (s *MCPServer) handleInitialize(
 	ctx context.Context,
-	id interface{},
+	id any,
 	request mcp.InitializeRequest,
 ) (*mcp.InitializeResult, *requestError) {
 	capabilities := mcp.ServerCapabilities{}
@@ -535,7 +535,7 @@ func (s *MCPServer) handleInitialize(
 
 func (s *MCPServer) handlePing(
 	ctx context.Context,
-	id interface{},
+	id any,
 	request mcp.PingRequest,
 ) (*mcp.EmptyResult, *requestError) {
 	return &mcp.EmptyResult{}, nil
@@ -579,7 +579,7 @@ func listByPagination[T any](
 
 func (s *MCPServer) handleListResources(
 	ctx context.Context,
-	id interface{},
+	id any,
 	request mcp.ListResourcesRequest,
 ) (*mcp.ListResourcesResult, *requestError) {
 	s.resourcesMu.RLock()
@@ -612,7 +612,7 @@ func (s *MCPServer) handleListResources(
 
 func (s *MCPServer) handleListResourceTemplates(
 	ctx context.Context,
-	id interface{},
+	id any,
 	request mcp.ListResourceTemplatesRequest,
 ) (*mcp.ListResourceTemplatesResult, *requestError) {
 	s.resourcesMu.RLock()
@@ -643,7 +643,7 @@ func (s *MCPServer) handleListResourceTemplates(
 
 func (s *MCPServer) handleReadResource(
 	ctx context.Context,
-	id interface{},
+	id any,
 	request mcp.ReadResourceRequest,
 ) (*mcp.ReadResourceResult, *requestError) {
 	s.resourcesMu.RLock()
@@ -672,7 +672,7 @@ func (s *MCPServer) handleReadResource(
 			matched = true
 			matchedVars := template.URITemplate.Match(request.Params.URI)
 			// Convert matched variables to a map
-			request.Params.Arguments = make(map[string]interface{}, len(matchedVars))
+			request.Params.Arguments = make(map[string]any, len(matchedVars))
 			for name, value := range matchedVars {
 				request.Params.Arguments[name] = value.V
 			}
@@ -707,7 +707,7 @@ func matchesTemplate(uri string, template *mcp.URITemplate) bool {
 
 func (s *MCPServer) handleListPrompts(
 	ctx context.Context,
-	id interface{},
+	id any,
 	request mcp.ListPromptsRequest,
 ) (*mcp.ListPromptsResult, *requestError) {
 	s.promptsMu.RLock()
@@ -740,7 +740,7 @@ func (s *MCPServer) handleListPrompts(
 
 func (s *MCPServer) handleGetPrompt(
 	ctx context.Context,
-	id interface{},
+	id any,
 	request mcp.GetPromptRequest,
 ) (*mcp.GetPromptResult, *requestError) {
 	s.promptsMu.RLock()
@@ -769,7 +769,7 @@ func (s *MCPServer) handleGetPrompt(
 
 func (s *MCPServer) handleListTools(
 	ctx context.Context,
-	id interface{},
+	id any,
 	request mcp.ListToolsRequest,
 ) (*mcp.ListToolsResult, *requestError) {
 	// Get the base tools from the server
@@ -854,7 +854,7 @@ func (s *MCPServer) handleListTools(
 
 func (s *MCPServer) handleToolCall(
 	ctx context.Context,
-	id interface{},
+	id any,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, *requestError) {
 	// First check session-specific tools
@@ -926,7 +926,7 @@ func (s *MCPServer) handleNotification(
 	return nil
 }
 
-func createResponse(id interface{}, result interface{}) mcp.JSONRPCMessage {
+func createResponse(id any, result any) mcp.JSONRPCMessage {
 	return mcp.JSONRPCResponse{
 		JSONRPC: mcp.JSONRPC_VERSION,
 		ID:      id,
@@ -935,7 +935,7 @@ func createResponse(id interface{}, result interface{}) mcp.JSONRPCMessage {
 }
 
 func createErrorResponse(
-	id interface{},
+	id any,
 	code int,
 	message string,
 ) mcp.JSONRPCMessage {
@@ -943,9 +943,9 @@ func createErrorResponse(
 		JSONRPC: mcp.JSONRPC_VERSION,
 		ID:      id,
 		Error: struct {
-			Code    int         `json:"code"`
-			Message string      `json:"message"`
-			Data    interface{} `json:"data,omitempty"`
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			Data    any    `json:"data,omitempty"`
 		}{
 			Code:    code,
 			Message: message,
