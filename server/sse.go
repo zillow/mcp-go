@@ -225,8 +225,6 @@ func NewTestServer(server *MCPServer, opts ...SSEOption) *httptest.Server {
 // It sets up HTTP handlers for SSE and message endpoints.
 func (s *SSEServer) Start(addr string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.srv == nil {
 		s.srv = &http.Server{
 			Addr:    addr,
@@ -239,8 +237,10 @@ func (s *SSEServer) Start(addr string) error {
 			return fmt.Errorf("conflicting listen address: WithHTTPServer(%q) vs Start(%q)", s.srv.Addr, addr)
 		}
 	}
+	srv := s.srv
+	s.mu.Unlock()
 
-	return s.srv.ListenAndServe()
+	return srv.ListenAndServe()
 }
 
 // Shutdown gracefully stops the SSE server, closing all active sessions
