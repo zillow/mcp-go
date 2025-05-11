@@ -341,7 +341,7 @@ func (s *MCPServer) RemoveResource(uri string) {
 	}
 	s.resourcesMu.Unlock()
 
-	// Send notification to all initialized sessions if listChanged capability is enabled and we actually remove a resource 
+	// Send notification to all initialized sessions if listChanged capability is enabled and we actually remove a resource
 	if exists && s.capabilities.resources != nil && s.capabilities.resources.listChanged {
 		s.SendNotificationToAllClients(mcp.MethodNotificationResourcesListChanged, nil)
 	}
