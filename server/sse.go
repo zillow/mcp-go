@@ -522,6 +522,15 @@ func (s *SSEServer) SendEventToSession(
 	}
 }
 
+// IsValidSessionID returns true if the provided session ID is recognized by this SSE server,
+// otherwise it returns false.
+func (s *SSEServer) IsValidSessionID(
+	sessionID string,
+) bool {
+	_, found := s.sessions.Load(sessionID)
+	return found
+}
+
 func (s *SSEServer) GetUrlPath(input string) (string, error) {
 	parse, err := url.Parse(input)
 	if err != nil {
