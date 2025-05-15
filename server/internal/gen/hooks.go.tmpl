@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/zillow/mcp-go/mcp"
 )
 
 // OnRegisterSessionHookFunc is a hook that will be called when a new session is registered.
@@ -27,7 +27,7 @@ type OnSuccessHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, m
 
 // OnErrorHookFunc is a hook that will be called when an error occurs,
 // either during the request parsing or the method execution.
-// 
+//
 // Example usage:
 // ```
 // hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
@@ -41,7 +41,7 @@ type OnSuccessHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, m
 //   var parseErr = &UnparsableMessageError{}
 //   if errors.As(err, &parseErr) {
 //     // Access specific methods/fields of the error type
-//     log.Printf("Failed to parse message for method %s: %v", 
+//     log.Printf("Failed to parse message for method %s: %v",
 //                parseErr.GetMethod(), parseErr.Unwrap())
 //     // Access the raw message that failed to parse
 //     rawMsg := parseErr.GetMessage()
@@ -98,7 +98,7 @@ func (c *Hooks) AddOnSuccess(hook OnSuccessHookFunc) {
 // ```
 // // Create a channel to receive errors for testing
 // errChan := make(chan error, 1)
-// 
+//
 // // Register hook to capture and inspect errors
 // hooks := &Hooks{}
 // hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
@@ -113,7 +113,7 @@ func (c *Hooks) AddOnSuccess(hook OnSuccessHookFunc) {
 //     var parseErr = &UnparsableMessageError{}
 //     if errors.As(err, &parseErr) {
 //         // Handle unparsable message errors
-//         fmt.Printf("Failed to parse %s request: %v\n", 
+//         fmt.Printf("Failed to parse %s request: %v\n",
 //                    parseErr.GetMethod(), parseErr.Unwrap())
 //         errChan <- parseErr
 //         return
