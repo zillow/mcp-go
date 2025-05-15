@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/require"
+	"github.com/zillow/mcp-go/mcp"
 )
 
 func TestSSEServer(t *testing.T) {

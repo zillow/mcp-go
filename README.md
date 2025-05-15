@@ -2,9 +2,9 @@
 <div align="center">
 <img src="./logo.png" alt="MCP Go Logo">
 
-[![Build](https://github.com/mark3labs/mcp-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mark3labs/mcp-go/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/mark3labs/mcp-go?cache)](https://goreportcard.com/report/github.com/mark3labs/mcp-go)
-[![GoDoc](https://pkg.go.dev/badge/github.com/mark3labs/mcp-go.svg)](https://pkg.go.dev/github.com/mark3labs/mcp-go)
+[![Build](https://github.com/zillow/mcp-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zillow/mcp-go/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/zillow/mcp-go?cache)](https://goreportcard.com/report/github.com/zillow/mcp-go)
+[![GoDoc](https://pkg.go.dev/badge/github.com/zillow/mcp-go.svg)](https://pkg.go.dev/github.com/zillow/mcp-go)
 
 <strong>A Go implementation of the Model Context Protocol (MCP), enabling seamless integration between LLM applications and external data sources and tools.</strong>
 
@@ -27,8 +27,8 @@ import (
     "errors"
     "fmt"
 
-    "github.com/mark3labs/mcp-go/mcp"
-    "github.com/mark3labs/mcp-go/server"
+    "github.com/zillow/mcp-go/mcp"
+    "github.com/zillow/mcp-go/server"
 )
 
 func main() {
@@ -78,7 +78,7 @@ MCP Go handles all the complex protocol details and server management, so you ca
 
 (\*emphasis on *aims*)
 
-🚨 🚧 🏗️ *MCP Go is under active development, as is the MCP specification itself. Core features are working but some advanced capabilities are still in progress.* 
+🚨 🚧 🏗️ *MCP Go is under active development, as is the MCP specification itself. Core features are working but some advanced capabilities are still in progress.*
 
 
 <!-- omit in toc -->
@@ -102,7 +102,7 @@ MCP Go handles all the complex protocol details and server management, so you ca
 ## Installation
 
 ```bash
-go get github.com/mark3labs/mcp-go
+go get github.com/zillow/mcp-go
 ```
 
 ## Quickstart
@@ -116,8 +116,8 @@ import (
     "context"
     "fmt"
 
-    "github.com/mark3labs/mcp-go/mcp"
-    "github.com/mark3labs/mcp-go/server"
+    "github.com/zillow/mcp-go/mcp"
+    "github.com/zillow/mcp-go/server"
 )
 
 func main() {
@@ -229,7 +229,7 @@ Here's a simple example of a static resource:
 resource := mcp.NewResource(
     "docs://readme",
     "Project README",
-    mcp.WithResourceDescription("The project's README file"), 
+    mcp.WithResourceDescription("The project's README file"),
     mcp.WithMIMEType("text/markdown"),
 )
 
@@ -239,7 +239,7 @@ s.AddResource(resource, func(ctx context.Context, request mcp.ReadResourceReques
     if err != nil {
         return nil, err
     }
-    
+
     return []mcp.ResourceContents{
         mcp.TextResourceContents{
             URI:      "docs://readme",
@@ -266,12 +266,12 @@ s.AddResourceTemplate(template, func(ctx context.Context, request mcp.ReadResour
     // Extract ID from the URI using regex matching
     // The server automatically matches URIs to templates
     userID := extractIDFromURI(request.Params.URI)
-    
+
     profile, err := getUserProfile(userID)  // Your DB/API call here
     if err != nil {
         return nil, err
     }
-    
+
     return []mcp.ResourceContents{
         mcp.TextResourceContents{
             URI:      request.Params.URI,
@@ -330,7 +330,7 @@ s.AddTool(calculatorTool, func(ctx context.Context, request mcp.CallToolRequest)
         }
         result = x / y
     }
-    
+
     return mcp.FormatNumberResult(result), nil
 })
 ```
@@ -393,7 +393,7 @@ s.AddTool(httpTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp
 
 Tools can be used for any kind of computation or side effect:
 - Database queries
-- File operations  
+- File operations
 - External API calls
 - Calculations
 - System operations
@@ -401,7 +401,7 @@ Tools can be used for any kind of computation or side effect:
 Each tool should:
 - Have a clear description
 - Validate inputs
-- Handle errors gracefully 
+- Handle errors gracefully
 - Return structured responses
 - Use appropriate result types
 
@@ -426,7 +426,7 @@ s.AddPrompt(mcp.NewPrompt("greeting",
     if name == "" {
         name = "friend"
     }
-    
+
     return mcp.NewGetPromptResult(
         "A friendly greeting",
         []mcp.PromptMessage{
@@ -450,7 +450,7 @@ s.AddPrompt(mcp.NewPrompt("code_review",
     if prNumber == "" {
         return nil, fmt.Errorf("pr_number is required")
     }
-    
+
     return mcp.NewGetPromptResult(
         "Code review assistance",
         []mcp.PromptMessage{
@@ -481,7 +481,7 @@ s.AddPrompt(mcp.NewPrompt("query_builder",
     if tableName == "" {
         return nil, fmt.Errorf("table name is required")
     }
-    
+
     return mcp.NewGetPromptResult(
         "SQL query builder assistance",
         []mcp.PromptMessage{
@@ -676,7 +676,7 @@ s := server.NewMCPServer(
         if session == nil {
             return tools // Return all tools if no session
         }
-        
+
         // Example: filter tools based on session ID prefix
         if strings.HasPrefix(session.SessionID(), "admin-") {
             // Admin users get all tools
@@ -706,7 +706,7 @@ s.AddTool(mcp.NewTool("session_aware"), func(ctx context.Context, req mcp.CallTo
     if session == nil {
         return mcp.NewToolResultError("No active session"), nil
     }
-    
+
     return mcp.NewToolResultText("Hello, session " + session.SessionID()), nil
 })
 
@@ -714,10 +714,10 @@ s.AddTool(mcp.NewTool("session_aware"), func(ctx context.Context, req mcp.CallTo
 httpHandler := func(w http.ResponseWriter, r *http.Request) {
     // Get session from somewhere (like a cookie or header)
     session := getSessionFromRequest(r)
-    
+
     // Add session to context
     ctx := s.WithContext(r.Context(), session)
-    
+
     // Use this context when handling requests
     // ...
 }
